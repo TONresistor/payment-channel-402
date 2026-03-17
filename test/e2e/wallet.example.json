@@ -1,0 +1,8 @@
+{
+  "walletA": {
+    "mnemonic": ["word1", "word2", "...", "word24"]
+  },
+  "walletB": {
+    "mnemonic": ["word1", "word2", "...", "word24"]
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "pc402",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Payment Channel 402 — off-chain micropayments SDK",
+  "workspaces": [
+    "packages/core",
+    "packages/channel"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "vitest run --reporter=verbose --passWithNoTests",
+    "test:watch": "vitest --reporter=verbose",
+    "lint": "biome check . && tsc --noEmit",
+    "lint:fix": "biome check --fix .",
+    "clean": "npm run clean --workspaces --if-present && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.8",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.1"
+  }
+}

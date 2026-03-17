@@ -1,0 +1,32 @@
+// pc402 Payment Channel v2 — Opcodes and tags
+
+// Inbound opcodes (fixed hex, per spec)
+const OP_INIT_CHANNEL = 0x79ae99b5;
+const OP_TOP_UP = 0x593e3893;
+const OP_COOPERATIVE_COMMIT = 0x076bfdf1;
+const OP_COOPERATIVE_CLOSE = 0xd2b1eeeb;
+const OP_START_UNCOOPERATIVE_CLOSE = 0x8175e15d;
+const OP_FINISH_UNCOOPERATIVE_CLOSE = 0x25432a91;
+const OP_CHALLENGE_QUARANTINE = 0x9a77c0db;
+const OP_SETTLE_CONDITIONALS = 0x56c39b4c;
+
+// Signature tags
+const TAG_INIT = 0x481ebc44;
+const TAG_COOPERATIVE_CLOSE = 0x8243e9a3;
+const TAG_COOPERATIVE_COMMIT = 0x4a390cac;
+const TAG_START_UNCOOPERATIVE_CLOSE = 0x8c623692;
+const TAG_CHALLENGE_QUARANTINE = 0xb8a21379;
+const TAG_SETTLE_CONDITIONALS = 0x14588aab;
+const TAG_STATE = 0x50433453;
+
+// Outbound opcodes
+const OP_WITHDRAW_NOTIFICATION = 0xa32f0b3c;
+const OP_CHANNEL_CLOSED = 0xdddc88ba;
+const OP_EXCESSES = 0xd53276db;
+
+// Channel states
+const STATE_UNINITED = 0;
+const STATE_OPEN = 1;
+const STATE_CLOSURE_STARTED = 2;
+const STATE_SETTLING_CONDITIONALS = 3;
+const STATE_AWAITING_FINALIZATION = 4;

@@ -1,0 +1,42 @@
+{
+  "name": "pc402-core",
+  "version": "0.1.0",
+  "description": "Core cryptographic primitives for pc402 payment channels",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@ton/core": ">=0.59.0",
+    "@ton/crypto": ">=3.3.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.1",
+    "express": "^5.0.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.1"
+  }
+}

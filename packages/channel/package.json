@@ -1,0 +1,46 @@
+{
+  "name": "pc402-channel",
+  "version": "0.1.0",
+  "description": "On-chain TON payment channel management for pc402",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "pc402-core": "*",
+    "@ton/ton": ">=15.0.0"
+  },
+  "peerDependencies": {
+    "@ton/core": ">=0.60.0",
+    "@ton/crypto": ">=3.3.0"
+  },
+  "devDependencies": {
+    "@ton/sandbox": "^0.41.0",
+    "@ton/test-utils": "^0.12.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.1"
+  }
+}

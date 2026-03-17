@@ -1,0 +1,73 @@
+// pc402 Payment Channel v2 — TL-B Schema (TON-only phase)
+
+balance$_ depositA:Coins depositB:Coins
+          withdrawA:Coins withdrawB:Coins
+          sentA:Coins sentB:Coins = Balance;
+
+closure_config$_ quarantineDuration:uint32
+                  fine:Coins
+                  closeDuration:uint32 = ClosureConfig;
+
+payment_config$_ storageFee:Coins
+                  addressA:MsgAddress
+                  addressB:MsgAddress = PaymentConfig;
+
+semichannel_body$43685374 channelId:uint128
+                           seqno:uint64
+                           sent:Coins
+                           conditionalsHash:uint256 = SemichannelBody;
+
+signed_semichannel$_ signature:bits512
+                      body:^SemichannelBody = SignedSemichannel;
+
+quarantine$_ stateA:SemichannelBody
+             stateB:SemichannelBody
+             startedAt:uint32
+             committedByA:Bool
+             challenged:Bool = Quarantine;
+
+channel$_ inited:Bool
+          balance:^Balance
+          keyA:uint256
+          keyB:uint256
+          id:uint128
+          closureConfig:^ClosureConfig
+          commitedSeqnoA:uint64
+          commitedSeqnoB:uint64
+          quarantine:(Maybe ^Quarantine)
+          paymentConfig:^PaymentConfig = Channel;
+
+// Inbound messages
+top_up#593e3893 isA:Bool amount:Coins = InternalMsgBody;
+
+init_channel#79ae99b5 isA:Bool signature:bits512
+    tag:uint32 channelId:uint128
+    balanceA:Coins balanceB:Coins = InternalMsgBody;
+
+cooperative_close#d2b1eeeb sigA:^bits512 sigB:^bits512
+    tag:uint32 channelId:uint128
+    sentA:Coins sentB:Coins = InternalMsgBody;
+
+cooperative_commit#076bfdf1 sigA:^bits512 sigB:^bits512
+    tag:uint32 channelId:uint128
+    seqnoA:uint64 seqnoB:uint64
+    sentA:Coins sentB:Coins
+    withdrawA:Coins withdrawB:Coins = InternalMsgBody;
+
+start_uncooperative_close#8175e15d signedByA:Bool signature:bits512
+    tag:uint32 channelId:uint128
+    schA:^SignedSemichannel schB:^SignedSemichannel = InternalMsgBody;
+
+challenge_quarantine#9a77c0db challengedByA:Bool signature:bits512
+    tag:uint32 channelId:uint128
+    schA:^SignedSemichannel schB:^SignedSemichannel = InternalMsgBody;
+
+settle_conditionals#56c39b4c isFromA:Bool signature:bits512
+    tag:uint32 channelId:uint128
+    conditionalsCell:^Cell = InternalMsgBody;
+
+finish_uncooperative_close#25432a91 = InternalMsgBody;
+
+// Outbound messages
+channel_closed#dddc88ba channelId:uint128 = InternalMsgBody;
+withdraw_notification#a32f0b3c channelId:uint128 = InternalMsgBody;

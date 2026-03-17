@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Secrets
+.env
+.wallet.json
+
+# Dev artifacts
+.obsidian/
