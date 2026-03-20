@@ -6,8 +6,27 @@ on:
       - "v*"
 
 jobs:
+  ci:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+      - run: npx @biomejs/biome lint .
+      - run: npx @biomejs/biome format .
+      - run: npx tsc --noEmit
+      - run: npm test
+
   publish:
     name: Publish to npm
+    needs: ci
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -22,17 +41,8 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: npm
 
-      - name: Install
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-
-      - name: Typecheck
-        run: npx tsc --noEmit
-
-      - name: Test
-        run: npm test
+      - run: npm ci
+      - run: npm run build
 
       - name: Publish pc402-core
         run: npm publish --workspace packages/core --provenance --access public
