@@ -173,51 +173,39 @@ await channel.finishUncooperativeClose(senderA);
 
 ## Smart Contract
 
-The payment channel contract is written in [Tolk](https://docs.ton.org/develop/tolk/overview) (6 source files in `contracts/src/`). Compiled bytecode is embedded in `pc402-channel`. See [contracts/README.md](contracts/README.md) for full documentation.
-
-v2.1 includes 6 security fixes (F1-F6): seqno inclusion in close/commit signatures, unique TAG_STATE domain separation, dust limit, excess refund pattern, and related hardening.
+Bidirectional payment channel on TON. Two parties lock funds on-chain, exchange unlimited off-chain payments via signed state updates, then settle in one transaction. Supports cooperative close, uncooperative close with quarantine, partial withdrawals, and channel reopen. Source in `contracts/src/`, bytecode embedded in `pc402-channel`. See [contracts/README.md](contracts/README.md) for details.
 
 ### Balance Model
 
-Each party has 3 tracked values on-chain: `deposit`, `withdrawn`, `sent`. The effective balance is computed:
+Each party has 3 tracked values on-chain: `deposit`, `withdrawn`, `sent`.
 
 | Party | Effective balance |
 |---|---|
 | A | `depositA + sentB - sentA - withdrawnA` |
 | B | `depositB + sentA - sentB - withdrawnB` |
 
-Off-chain payments increment `sent`. Partial withdrawals increment `withdrawn`. At close, the effective balances determine the final payout.
-
 ### Channel States
 
 | State | Transition |
 |---|---|
 | `UNINITED` (0) | deploy + topUp + init -> `OPEN` |
-| `OPEN` (1) | cooperativeClose -> `UNINITED` (funds distributed, reopenable) |
+| `OPEN` (1) | cooperativeClose -> `UNINITED` (reopenable) |
 | `OPEN` (1) | startUncooperativeClose -> `CLOSURE_STARTED` |
-| `CLOSURE_STARTED` (2) | challengeQuarantinedState -> resets quarantine timer |
-| `CLOSURE_STARTED` (2) | quarantine expires -> `SETTLING_CONDITIONALS` |
-| `SETTLING_CONDITIONALS` (3) | close period expires -> `AWAITING_FINALIZATION` |
+| `CLOSURE_STARTED` (2) | challenge / quarantine expires -> `SETTLING_CONDITIONALS` |
 | `AWAITING_FINALIZATION` (4) | finishUncooperativeClose -> `UNINITED` |
 
 ### Operations
 
-| Operation | Opcode | Signatures | Gas |
-|---|---|---|---|
-| topUp | `0x593e3893` | none (sender address verified) | 0.004 TON |
-| initChannel | `0x79ae99b5` | 1 (A or B) | 0.004 TON |
-| cooperativeClose | `0xd2b1eeeb` | 2 (A + B) | 0.006 TON |
-| cooperativeCommit | `0x076bfdf1` | 2 (A + B) | 0.005 TON |
-| startUncooperativeClose | `0x8175e15d` | 1 outer + 2 inner | 0.005 TON |
-| challengeQuarantinedState | `0x9a77c0db` | 1 outer + 2 inner | 0.005 TON |
-| settleConditionals | `0x56c39b4c` | 1 + Merkle proof | 0.005 TON |
-| finishUncooperativeClose | `0x25432a91` | none (anyone can call) | 0.005 TON |
-
-Surplus gas is refunded via `reserveToncoinsOnBalance` + `sendExcess`.
-
-### Dust Limit
-
-If a party's final payout is below 0.001 TON, the amount is redirected to the counterparty instead of sending a message that would fail silently. This prevents fund loss from messages too small to cover forward fees.
+| Operation | Gas |
+|---|---|
+| topUp | 0.004 TON |
+| initChannel | 0.004 TON |
+| cooperativeClose | 0.006 TON |
+| cooperativeCommit | 0.005 TON |
+| startUncooperativeClose | 0.005 TON |
+| challengeQuarantinedState | 0.005 TON |
+| finishUncooperativeClose | 0.005 TON |
+| **Off-chain payment** | **0 TON** |
 
 ## Testing
 
@@ -227,7 +215,7 @@ npm run lint                                       # biome + tsc
 npx vitest run -c test/e2e/vitest.config.ts        # 3 E2E mainnet (requires funded wallets + .env)
 ```
 
-## Why
+## Why Payment Channels?
 
 Existing solutions pay on-chain per request ([x402](https://github.com/coinbase/x402)) or require trusted hardware ([A402](https://arxiv.org/abs/2503.18732)). Neither works for high-frequency machine-to-machine payments: gas costs eliminate micropayments, block confirmation adds seconds of latency, and hardware dependencies exclude IoT devices.
 

@@ -372,7 +372,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     "Cooperative close — settle and destroy a payment channel (on-chain). Requires server signature.",
     {
       channelAddress: z.string().describe("Channel contract address"),
-      serverSignature: z.string().describe("Server (party B) close signature (hex, 64 bytes)"),
+      serverSignature: z.string().describe("Server (party B) close signature (base64)"),
     },
     async ({ channelAddress, serverSignature }) => {
       try {
@@ -397,7 +397,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           sentB,
           keyPair,
         );
-        const sigB = Buffer.from(serverSignature, "hex");
+        const sigB = Buffer.from(serverSignature, "base64");
 
         await oc.cooperativeClose(
           sender,
@@ -432,7 +432,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     "Cooperative commit — advance seqnos on-chain without closing.",
     {
       channelAddress: z.string().describe("Channel contract address"),
-      serverSignature: z.string().describe("Server (party B) commit signature (hex, 64 bytes)"),
+      serverSignature: z.string().describe("Server (party B) commit signature (base64)"),
       withdrawA: z.string().optional().describe("Amount to withdraw for A in nanotons (default 0)"),
       withdrawB: z.string().optional().describe("Amount to withdraw for B in nanotons (default 0)"),
     },
@@ -461,7 +461,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           wA,
           wB,
         );
-        const sigB = Buffer.from(serverSignature, "hex");
+        const sigB = Buffer.from(serverSignature, "base64");
 
         await oc.cooperativeCommit(
           sender,

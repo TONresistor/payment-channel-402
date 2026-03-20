@@ -265,7 +265,7 @@ export function makeChannelCommand(): Command {
     .command("cooperative-close")
     .description("Cooperative close — settle and destroy channel (on-chain)")
     .argument("<address>", "Channel contract address")
-    .requiredOption("--server-signature <hex>", "Server (party B) close signature (hex, 64 bytes)")
+    .requiredOption("--server-signature <base64>", "Server (party B) close signature (base64)")
     .action(async (address: string, opts: { serverSignature: string }) => {
       const config = await resolveConfig(cmd.optsWithGlobals() as CliOpts);
       const client = requireRpc(config);
@@ -295,7 +295,7 @@ export function makeChannelCommand(): Command {
           sentB,
           config.keyPair,
         );
-        const sigB = Buffer.from(opts.serverSignature, "hex");
+        const sigB = Buffer.from(opts.serverSignature, "base64");
 
         await oc.cooperativeClose(
           sender,
@@ -317,7 +317,7 @@ export function makeChannelCommand(): Command {
     .command("cooperative-commit")
     .description("Cooperative commit — advance seqnos on-chain without closing")
     .argument("<address>", "Channel contract address")
-    .requiredOption("--server-signature <hex>", "Server (party B) commit signature (hex, 64 bytes)")
+    .requiredOption("--server-signature <base64>", "Server (party B) commit signature (base64)")
     .option("--withdraw-a <amount>", "Amount to withdraw for A in nanotons", "0")
     .option("--withdraw-b <amount>", "Amount to withdraw for B in nanotons", "0")
     .action(
@@ -359,7 +359,7 @@ export function makeChannelCommand(): Command {
             withdrawA,
             withdrawB,
           );
-          const sigB = Buffer.from(opts.serverSignature, "hex");
+          const sigB = Buffer.from(opts.serverSignature, "base64");
 
           await oc.cooperativeCommit(
             sender,
