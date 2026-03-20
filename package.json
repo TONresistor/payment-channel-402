@@ -1,6 +1,6 @@
 {
   "name": "pc402",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Payment Channel 402 — off-chain micropayments SDK",
   "workspaces": [

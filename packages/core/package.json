@@ -1,6 +1,6 @@
 {
   "name": "pc402-core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Core cryptographic primitives for pc402 payment channels",
   "type": "module",
   "main": "./dist/index.cjs",

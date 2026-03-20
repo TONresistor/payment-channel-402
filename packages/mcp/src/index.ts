@@ -68,7 +68,7 @@ async function main() {
   const fetch402 = createPC402Fetch({ keyPair, storage });
   const pool = new ChannelPool(keyPair, storage);
 
-  const server = new McpServer({ name: "pc402", version: "0.2.0" });
+  const server = new McpServer({ name: "pc402", version: "0.3.0" });
   registerTools(server, { fetch402, pool, keyPair, client, storage });
 
   const transport = new StdioServerTransport();
