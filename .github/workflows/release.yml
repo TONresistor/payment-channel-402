@@ -45,26 +45,26 @@ jobs:
       - run: npm run build
 
       - name: Publish pc402-core
-        run: npm publish --workspace packages/core --provenance --access public
+        run: npm publish --workspace packages/core --provenance --access public || true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish pc402-channel
-        run: npm publish --workspace packages/channel --provenance --access public
+        run: npm publish --workspace packages/channel --provenance --access public || true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish pc402-fetch
-        run: npm publish --workspace packages/fetch --provenance --access public
+        run: npm publish --workspace packages/fetch --provenance --access public || true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish pc402-cli
-        run: npm publish --workspace packages/cli --provenance --access public
+        run: npm publish --workspace packages/cli --provenance --access public || true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish pc402-mcp
-        run: npm publish --workspace packages/mcp --provenance --access public
+        run: npm publish --workspace packages/mcp --provenance --access public || true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
