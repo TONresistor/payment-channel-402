@@ -168,11 +168,12 @@ await channel.finishUncooperativeClose(senderA);
 | `packages/fetch/` | `pc402-fetch` | HTTP client with auto-402 payment |
 | `packages/cli/` | `pc402-cli` | CLI for agents and developers (16 commands) |
 | `packages/mcp/` | `pc402-mcp` | MCP server for AI agents (14 tools) |
+| `contracts/` | | Payment channel smart contract (Tolk v2.1, 6 files, 36 sandbox tests) |
 | `test/e2e/` | | 3 E2E mainnet test suites |
 
 ## Smart Contract
 
-The payment channel contract is written in [Tolk](https://docs.ton.org/develop/tolk/overview). Source lives in a [separate repo](https://github.com/TONresistor/pc402-contract). Compiled bytecode is embedded in `pc402-channel`.
+The payment channel contract is written in [Tolk](https://docs.ton.org/develop/tolk/overview) (6 source files in `contracts/src/`). Compiled bytecode is embedded in `pc402-channel`. See [contracts/README.md](contracts/README.md) for full documentation.
 
 v2.1 includes 6 security fixes (F1-F6): seqno inclusion in close/commit signatures, unique TAG_STATE domain separation, dust limit, excess refund pattern, and related hardening.
 
