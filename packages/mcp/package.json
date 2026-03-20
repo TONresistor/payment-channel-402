@@ -1,11 +1,14 @@
 {
-  "name": "pc402-channel",
-  "version": "0.2.0",
-  "description": "On-chain TON payment channel management for pc402",
+  "name": "pc402-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for AI agent payments via HTTP 402 payment channels",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "pc402-mcp": "./dist/index.js"
+  },
   "exports": {
     ".": {
       "import": {
@@ -24,27 +27,20 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest run",
-    "test:watch": "vitest",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "pc402-core": "*",
-    "@ton/ton": ">=15.0.0"
+    "pc402-fetch": "*",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.24.0"
   },
   "peerDependencies": {
     "@ton/core": ">=0.60.0",
     "@ton/crypto": ">=3.3.0"
   },
   "devDependencies": {
-    "@ton/sandbox": "^0.41.0",
-    "@ton/test-utils": "^0.12.0",
     "tsup": "^8.4.0",
-    "typescript": "^5.8.3",
-    "vitest": "^3.1.1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/TONresistor/payment-channel-402"
+    "typescript": "^5.8.3"
   }
 }
