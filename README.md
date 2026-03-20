@@ -8,13 +8,52 @@ TypeScript SDK for off-chain micropayments on TON via payment channels and HTTP 
 
 Open a channel on-chain, exchange unlimited signed payments off-chain, close on-chain. Three transactions total, zero gas per payment. Tested E2E on TON mainnet.
 
-## Install
+## Packages
 
-```bash
-npm install pc402-core pc402-channel
-```
+| Package | Description | Install |
+|---------|-------------|---------|
+| `pc402-core` | Off-chain signing, HTTP 402 protocol, state management | `npm i pc402-core` |
+| `pc402-channel` | On-chain lifecycle, dispute resolution | `npm i pc402-channel` |
+| `pc402-fetch` | HTTP client with automatic 402 payment handling | `npm i pc402-fetch` |
+| `pc402-cli` | CLI for agents and developers | `npm i -g pc402-cli` |
+| `pc402-mcp` | MCP server for AI agents (Claude, Cursor, etc.) | `npm i -g pc402-mcp` |
 
 Peer dependencies: `@ton/core`, `@ton/crypto`, `@ton/ton`.
+
+## Quick Start
+
+### For AI agents (MCP)
+
+```bash
+npm install -g pc402-mcp
+pc402-mcp --wallet .wallet.json --rpc https://toncenter.com/api/v2/jsonRPC
+```
+
+Configure in Claude Desktop or Cursor — see [packages/mcp/README.md](packages/mcp/README.md).
+
+### For AI agents (CLI)
+
+```bash
+npm install -g pc402-cli
+pc402 fetch https://api.example.com/data --wallet .wallet.json
+pc402 channel list --wallet .wallet.json
+```
+
+See [packages/cli/README.md](packages/cli/README.md) for all 16 commands.
+
+### For developers (library)
+
+```bash
+npm install pc402-fetch
+```
+
+```typescript
+import { createPC402Fetch } from "pc402-fetch";
+
+const fetch402 = createPC402Fetch({ keyPair, storage });
+const res = await fetch402("https://api.example.com/data");
+// 402 Payment Required? Handled automatically.
+```
 
 ## Flow
 
@@ -28,8 +67,8 @@ const header = buildPaymentRequired({
   price: 1000000n,
   serverPublicKey: serverKP.publicKey,
   serverAddress: "EQ...",
-  channelAddress: "EQ...",  // optional for discovery
-  channelId: 1n,            // optional for discovery
+  channelAddress: "EQ...",
+  channelId: 1n,
   initBalanceA: 100000000n,
   initBalanceB: 0n,
 });
@@ -122,19 +161,20 @@ await channel.finishUncooperativeClose(senderA);
 
 ## Structure
 
-| Path                | Description                                                  |
-| ------------------- | ------------------------------------------------------------ |
-| `packages/core/`    | `pc402-core`  off-chain signing, HTTP 402, state management |
-| `packages/channel/` | `pc402-channel`  on-chain lifecycle, dispute resolution |
-| `contracts/src/`    | Payment channel smart contract (Tolk v2, 7 files)            |
-| `contracts/test/`   | 36 sandbox tests                                             |
-| `test/e2e/`         | 3 E2E mainnet test suites                                    |
+| Path | Package | Description |
+|------|---------|-------------|
+| `packages/core/` | `pc402-core` | Off-chain signing, HTTP 402, state management |
+| `packages/channel/` | `pc402-channel` | On-chain lifecycle, dispute resolution |
+| `packages/fetch/` | `pc402-fetch` | HTTP client with auto-402 payment |
+| `packages/cli/` | `pc402-cli` | CLI for agents and developers (16 commands) |
+| `packages/mcp/` | `pc402-mcp` | MCP server for AI agents (14 tools) |
+| `test/e2e/` | | 3 E2E mainnet test suites |
 
 ## Smart Contract
 
-The payment channel contract is written in [Tolk](https://docs.ton.org/develop/tolk/overview) and included in `contracts/src/`. Compiled bytecode is embedded in `pc402-channel`.
+The payment channel contract is written in [Tolk](https://docs.ton.org/develop/tolk/overview). Source lives in a [separate repo](https://github.com/TONresistor/pc402-contract). Compiled bytecode is embedded in `pc402-channel`.
 
-v2.1 includes 6 security fixes (F1-F6): seqno inclusion in close/commit signatures, unique TAG_STATE domain separation, dust limit, excess refund pattern, and related hardening. See [contracts/README.md](contracts/README.md) for details.
+v2.1 includes 6 security fixes (F1-F6): seqno inclusion in close/commit signatures, unique TAG_STATE domain separation, dust limit, excess refund pattern, and related hardening.
 
 ### Balance Model
 
@@ -151,13 +191,13 @@ Off-chain payments increment `sent`. Partial withdrawals increment `withdrawn`. 
 
 | State | Transition |
 |---|---|
-| `UNINITED` (0) | deploy + topUp + init → `OPEN` |
-| `OPEN` (1) | cooperativeClose → `UNINITED` (funds distributed, reopenable) |
-| `OPEN` (1) | startUncooperativeClose → `CLOSURE_STARTED` |
-| `CLOSURE_STARTED` (2) | challengeQuarantinedState → resets quarantine timer |
-| `CLOSURE_STARTED` (2) | quarantine expires → `SETTLING_CONDITIONALS` |
-| `SETTLING_CONDITIONALS` (3) | close period expires → `AWAITING_FINALIZATION` |
-| `AWAITING_FINALIZATION` (4) | finishUncooperativeClose → `UNINITED` |
+| `UNINITED` (0) | deploy + topUp + init -> `OPEN` |
+| `OPEN` (1) | cooperativeClose -> `UNINITED` (funds distributed, reopenable) |
+| `OPEN` (1) | startUncooperativeClose -> `CLOSURE_STARTED` |
+| `CLOSURE_STARTED` (2) | challengeQuarantinedState -> resets quarantine timer |
+| `CLOSURE_STARTED` (2) | quarantine expires -> `SETTLING_CONDITIONALS` |
+| `SETTLING_CONDITIONALS` (3) | close period expires -> `AWAITING_FINALIZATION` |
+| `AWAITING_FINALIZATION` (4) | finishUncooperativeClose -> `UNINITED` |
 
 ### Operations
 
@@ -178,26 +218,12 @@ Surplus gas is refunded via `reserveToncoinsOnBalance` + `sendExcess`.
 
 If a party's final payout is below 0.001 TON, the amount is redirected to the counterparty instead of sending a message that would fail silently. This prevents fund loss from messages too small to cover forward fees.
 
-### Contract Source
-
-| File | Role |
-|---|---|
-| `payment-channel.tolk` | Entry points, router, all 8 handlers, GET methods |
-| `storage.tolk` | 6-field balance, calcA/calcB, tiered load/save |
-| `messages.tolk` | Opcodes, signature tags, state constants |
-| `errors.tolk` | Error codes by operation (100-179) |
-| `fees.tolk` | DUST_LIMIT constant |
-| `utils.tolk` | TVM continuation helper |
-
 ## Testing
 
 ```bash
-npm test                                          # 120 unit + sandbox tests
-npm run lint                                      # biome + tsc
-cd contracts && npx vitest run                    # 36 contract tests (incl. 6 security regression)
-
-# E2E mainnet (requires funded wallets + .env)
-npx vitest run -c test/e2e/vitest.config.ts       # 3 E2E mainnet (+ 8 contract/sandbox inline)
+npm test                                           # 142 unit + sandbox tests
+npm run lint                                       # biome + tsc
+npx vitest run -c test/e2e/vitest.config.ts        # 3 E2E mainnet (requires funded wallets + .env)
 ```
 
 ## Why
@@ -207,8 +233,6 @@ Existing solutions pay on-chain per request ([x402](https://github.com/coinbase/
 pc402 locks funds once in a payment channel, then exchanges Ed25519 signatures off-chain. Zero gas per payment. Sub-millisecond verification. Runs on anything from a cloud server to an ESP32 over LoRa. The blockchain is only touched at open and close.
 
 **Use cases:** AI agents paying for API calls without API keys. IoT sensors selling data over LoRa mesh networks without internet. APIs monetized per-request without Stripe. Content paid per-paragraph instead of per-subscription. Vehicles streaming payments for tolls, parking, and charging.
-
-See [docs/technical-overview.md](technical.md) for the full technical analysis.
 
 ## License
 
