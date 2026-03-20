@@ -20,7 +20,17 @@ import {
 } from "@ton/core";
 import { type KeyPair, sign } from "@ton/crypto";
 import type { TonClient } from "@ton/ton";
-import { PC402ErrorCode, ValidationError } from "pc402-core";
+import {
+  PC402ErrorCode,
+  TAG_CHALLENGE_QUARANTINE,
+  TAG_CLOSE as TAG_COOPERATIVE_CLOSE,
+  TAG_COMMIT as TAG_COOPERATIVE_COMMIT,
+  TAG_INIT,
+  TAG_SETTLE_CONDITIONALS,
+  TAG_START_UNCOOPERATIVE_CLOSE,
+  TAG_STATE,
+  ValidationError,
+} from "pc402-core";
 import { type ChannelInitConfig, createChannelStateInit } from "./contract.js";
 
 // On-chain operation codes (v2 — from messages.tolk)
@@ -32,15 +42,6 @@ const OP_START_UNCOOPERATIVE_CLOSE = 0x8175e15d;
 const OP_CHALLENGE_QUARANTINE = 0x9a77c0db;
 const OP_SETTLE_CONDITIONALS = 0x56c39b4c;
 const OP_FINISH_UNCOOPERATIVE_CLOSE = 0x25432a91; // pc402
-
-// Signature tags (v2 — from messages.tolk)
-const TAG_INIT = 0x481ebc44;
-const TAG_COOPERATIVE_CLOSE = 0x8243e9a3;
-const TAG_COOPERATIVE_COMMIT = 0x4a390cac;
-const TAG_START_UNCOOPERATIVE_CLOSE = 0x8c623692;
-const TAG_CHALLENGE_QUARANTINE = 0xb8a21379;
-const TAG_SETTLE_CONDITIONALS = 0x14588aab;
-const TAG_STATE = 0x50433453; // pc402
 
 // Gas allowances (measured from mainnet E2E v2 transactions)
 // Surplus is refunded by the contract's sendExcess() / reserveToncoinsOnBalance pattern.
@@ -75,16 +76,18 @@ export {
 export interface OnchainChannelOptions {
   /** TonClient instance used to send messages and call get-methods. */
   client: TonClient;
-  /** Ed25519 key pair for party A (payer / client). */
-  keyPairA: KeyPair;
-  /** Ed25519 key pair for party B (payee / server). */
-  keyPairB: KeyPair;
+  /** Ed25519 key pair of this party (A or B). */
+  myKeyPair: KeyPair;
+  /** Ed25519 public key of the counterparty (32 bytes). */
+  counterpartyPublicKey: Buffer;
+  /** true if this party is A, false if B. */
+  isA: boolean;
   /** Unique channel identifier (uint128, must be positive). */
   channelId: bigint;
-  /** TON address of party A. */
-  addressA: Address;
-  /** TON address of party B. */
-  addressB: Address;
+  /** TON address of this party. */
+  myAddress: Address;
+  /** TON address of the counterparty. */
+  counterpartyAddress: Address;
   /** A's initial deposit in nanotons. */
   initBalanceA: bigint;
   /** B's initial deposit in nanotons. */
@@ -146,11 +149,12 @@ export function buildSignedSemiChannel(
  */
 export class OnchainChannel {
   private readonly client: TonClient;
-  private readonly keyPairA: KeyPair;
-  private readonly keyPairB: KeyPair;
+  private readonly myKeyPair: KeyPair;
+  private readonly counterpartyPublicKey: Buffer;
+  private readonly isA: boolean;
   private readonly channelId: bigint;
-  private readonly addressA: Address;
-  private readonly addressB: Address;
+  private readonly myAddress: Address;
+  private readonly counterpartyAddress: Address;
   private readonly initBalanceA: bigint;
   private readonly initBalanceB: bigint;
   private readonly stateInit: StateInit;
@@ -173,17 +177,21 @@ export class OnchainChannel {
   constructor(options: OnchainChannelOptions) {
     if (options.channelId <= 0n)
       throw new ValidationError("channelId must be positive", PC402ErrorCode.INVALID_CHANNEL_ID);
-    if (options.keyPairA.publicKey.length !== 32)
-      throw new ValidationError("keyPairA.publicKey must be 32 bytes", PC402ErrorCode.INVALID_KEY);
-    if (options.keyPairB.publicKey.length !== 32)
-      throw new ValidationError("keyPairB.publicKey must be 32 bytes", PC402ErrorCode.INVALID_KEY);
+    if (options.myKeyPair.publicKey.length !== 32)
+      throw new ValidationError("myKeyPair.publicKey must be 32 bytes", PC402ErrorCode.INVALID_KEY);
+    if (options.counterpartyPublicKey.length !== 32)
+      throw new ValidationError(
+        "counterpartyPublicKey must be 32 bytes",
+        PC402ErrorCode.INVALID_KEY,
+      );
 
     this.client = options.client;
-    this.keyPairA = options.keyPairA;
-    this.keyPairB = options.keyPairB;
+    this.myKeyPair = options.myKeyPair;
+    this.counterpartyPublicKey = options.counterpartyPublicKey;
+    this.isA = options.isA;
     this.channelId = options.channelId;
-    this.addressA = options.addressA;
-    this.addressB = options.addressB;
+    this.myAddress = options.myAddress;
+    this.counterpartyAddress = options.counterpartyAddress;
     this.initBalanceA = options.initBalanceA;
     this.initBalanceB = options.initBalanceB;
 
@@ -193,12 +201,17 @@ export class OnchainChannel {
       conditionalCloseDuration: options.closingConfig?.conditionalCloseDuration ?? 0,
     };
 
+    const publicKeyA = options.isA ? options.myKeyPair.publicKey : options.counterpartyPublicKey;
+    const publicKeyB = options.isA ? options.counterpartyPublicKey : options.myKeyPair.publicKey;
+    const addressA = options.isA ? options.myAddress : options.counterpartyAddress;
+    const addressB = options.isA ? options.counterpartyAddress : options.myAddress;
+
     const initConfig: ChannelInitConfig = {
-      publicKeyA: this.keyPairA.publicKey,
-      publicKeyB: this.keyPairB.publicKey,
+      publicKeyA,
+      publicKeyB,
       channelId: this.channelId,
-      addressA: this.addressA,
-      addressB: this.addressB,
+      addressA,
+      addressB,
       quarantineDuration: this.closingConfig.quarantineDuration,
       misbehaviorFine: this.closingConfig.misbehaviorFine,
       conditionalCloseDuration: this.closingConfig.conditionalCloseDuration,
@@ -226,6 +239,15 @@ export class OnchainChannel {
    */
   getChannelId(): bigint {
     return this.channelId;
+  }
+
+  /**
+   * Get whether this instance represents party A.
+   *
+   * @returns true if this party is A, false if B
+   */
+  getIsA(): boolean {
+    return this.isA;
   }
 
   /**
@@ -324,16 +346,14 @@ export class OnchainChannel {
    * @param via      - Sender abstraction used to submit the message
    * @param balanceA - A's committed initial balance in nanotons
    * @param balanceB - B's committed initial balance in nanotons
-   * @param signKey  - Key pair of the party submitting the init message
    * @returns        Resolves when the message is submitted
    */
-  async init(via: Sender, balanceA: bigint, balanceB: bigint, signKey: KeyPair): Promise<void> {
-    const isA = signKey.publicKey.equals(this.keyPairA.publicKey);
-    const signature = this.signInit(balanceA, balanceB, signKey);
+  async init(via: Sender, balanceA: bigint, balanceB: bigint): Promise<void> {
+    const signature = this.signInit(balanceA, balanceB, this.myKeyPair);
 
     const body = beginCell()
       .storeUint(OP_INIT_CHANNEL, 32)
-      .storeBit(isA)
+      .storeBit(this.isA)
       .storeBuffer(signature, 64)
       .storeUint(TAG_INIT, 32)
       .storeUint(this.channelId, 128)
@@ -368,7 +388,13 @@ export class OnchainChannel {
    * @returns       64-byte Ed25519 signature buffer
    * @throws {ValidationError} If sentA or sentB is negative
    */
-  signClose(sentA: bigint, sentB: bigint, keyPair: KeyPair): Buffer {
+  signClose(
+    seqnoA: bigint,
+    seqnoB: bigint,
+    sentA: bigint,
+    sentB: bigint,
+    keyPair: KeyPair,
+  ): Buffer {
     if (sentA < 0n || sentB < 0n)
       throw new ValidationError(
         "sentA and sentB must be non-negative",
@@ -377,6 +403,8 @@ export class OnchainChannel {
     const payloadCell = beginCell()
       .storeUint(TAG_COOPERATIVE_CLOSE, 32)
       .storeUint(this.channelId, 128)
+      .storeUint(seqnoA, 64)
+      .storeUint(seqnoB, 64)
       .storeCoins(sentA)
       .storeCoins(sentB)
       .endCell();
@@ -403,6 +431,8 @@ export class OnchainChannel {
    */
   async cooperativeClose(
     via: Sender,
+    seqnoA: bigint,
+    seqnoB: bigint,
     sentA: bigint,
     sentB: bigint,
     signatureA: Buffer,
@@ -417,6 +447,8 @@ export class OnchainChannel {
       .storeRef(sigBCell)
       .storeUint(TAG_COOPERATIVE_CLOSE, 32)
       .storeUint(this.channelId, 128)
+      .storeUint(seqnoA, 64)
+      .storeUint(seqnoB, 64)
       .storeCoins(sentA)
       .storeCoins(sentB)
       .endCell();

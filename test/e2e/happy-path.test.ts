@@ -56,10 +56,10 @@ describe("e2e mainnet: happy path", { timeout: 120_000 }, () => {
     expect(state.withdrawnA).toBe(withdrawA);
 
     // CooperativeClose
-    const closeSigA = channel.signClose(sentA, 0n, ctx.keyPairA);
-    const closeSigB = channel.signClose(sentA, 0n, ctx.keyPairB);
+    const closeSigA = channel.signClose(2n, 2n, sentA, 0n, ctx.keyPairA);
+    const closeSigB = channel.signClose(2n, 2n, sentA, 0n, ctx.keyPairB);
     await sendAndWait(ctx.walletA, () =>
-      channel.cooperativeClose(ctx.senderA, sentA, 0n, closeSigA, closeSigB),
+      channel.cooperativeClose(ctx.senderA, 2n, 2n, sentA, 0n, closeSigA, closeSigB),
     );
     await waitDrained(ctx.client, address);
 

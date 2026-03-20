@@ -110,6 +110,7 @@ fun getPaymentAddresses(): (int, slice, slice) {
 // ============================================================
 fun topUp(myBalance: int, msgValue: int, msg: slice, senderAddr: address) {
     loadStorage(STORAGE_FULL);
+    assert(quarantine == null) throw ERROR_TOPUP_QUARANTINE_ACTIVE;
     var isA: int = msg.loadInt(1);
     var amount: int = msg.loadCoins();
 
@@ -186,6 +187,11 @@ fun cooperativeClose(msg: slice) {
     assert(msg.loadUint(32) == TAG_COOPERATIVE_CLOSE) throw ERROR_CLOSE_CHANNEL_ID_MISMATCH;
     assert(channelId == msg.loadUint(128)) throw ERROR_CLOSE_CHANNEL_ID_MISMATCH;
 
+    var closeSeqnoA: int = msg.loadUint(64);
+    var closeSeqnoB: int = msg.loadUint(64);
+    assert(closeSeqnoA >= commitedSeqnoA) throw ERROR_CLOSE_SEQNO_A_REGRESS;
+    assert(closeSeqnoB >= commitedSeqnoB) throw ERROR_CLOSE_SEQNO_B_REGRESS;
+
     var newSentA: int = msg.loadCoins();
     var newSentB: int = msg.loadCoins();
 
@@ -218,8 +224,8 @@ fun cooperativeCommit(msg: slice) {
 
     var newSeqnoA: int = msg.loadUint(64);
     var newSeqnoB: int = msg.loadUint(64);
-    assert(newSeqnoA >= commitedSeqnoA) throw ERROR_COMMIT_SEQNO_A_REGRESS;
-    assert(newSeqnoB >= commitedSeqnoB) throw ERROR_COMMIT_SEQNO_B_REGRESS;
+    assert(newSeqnoA > commitedSeqnoA) throw ERROR_COMMIT_SEQNO_A_REGRESS;
+    assert(newSeqnoB > commitedSeqnoB) throw ERROR_COMMIT_SEQNO_B_REGRESS;
 
     var newSentA: int = msg.loadCoins();
     var newSentB: int = msg.loadCoins();
@@ -230,11 +236,13 @@ fun cooperativeCommit(msg: slice) {
     sentA = newSentA;
     sentB = newSentB;
 
-    // Process withdrawals
-    var deltaA: int = newWithdrawA;
-    var deltaB: int = newWithdrawB;
-    withdrawnA += deltaA;
-    withdrawnB += deltaB;
+    // Process withdrawals (absolute accounting — F1 fix)
+    assert(newWithdrawA >= withdrawnA) throw ERROR_COMMIT_WITHDRAW_A_REGRESS;
+    assert(newWithdrawB >= withdrawnB) throw ERROR_COMMIT_WITHDRAW_B_REGRESS;
+    var deltaA: int = newWithdrawA - withdrawnA;
+    var deltaB: int = newWithdrawB - withdrawnB;
+    withdrawnA = newWithdrawA;
+    withdrawnB = newWithdrawB;
 
     // Verify balances stay non-negative after all updates
     assert(calcA() >= 0) throw ERROR_COMMIT_BALANCE_A_NEGATIVE;
@@ -311,11 +319,16 @@ fun startUncooperativeClose(msg: slice) {
     assert(seqnoA >= commitedSeqnoA) throw ERROR_UNCOOP_SEQNO_A_REGRESS;
     assert(seqnoB >= commitedSeqnoB) throw ERROR_UNCOOP_SEQNO_B_REGRESS;
 
-    // Store quarantine: stateA + stateB + metadata
+    // F3: verify submitted semichannels produce non-negative balances
+    assert(depositA + sentAmtB >= sentAmtA + withdrawnA) throw ERROR_UNCOOP_BALANCE_A_NEGATIVE;
+    assert(depositB + sentAmtA >= sentAmtB + withdrawnB) throw ERROR_UNCOOP_BALANCE_B_NEGATIVE;
+
+    // Store quarantine: stateA + stateB + metadata (F4: add originalStart)
     quarantine = beginCell()
         .storeUint(seqnoA, 64).storeCoins(sentAmtA).storeUint(condHashA, 256)
         .storeUint(seqnoB, 64).storeCoins(sentAmtB).storeUint(condHashB, 256)
-        .storeUint(blockchain.now(), 32)
+        .storeUint(blockchain.now(), 32)  // originalStart
+        .storeUint(blockchain.now(), 32)  // lastChallengeTime
         .storeInt(signedByA, 1)
         .storeInt(false as int, 1)
         .endCell();
@@ -341,7 +354,7 @@ fun challengeQuarantinedState(msg: slice) {
     var (seqnoA, sentAmtA, condHashA) = parseSemichannel(schA, keyA, ERROR_CHALLENGE_SIG_A_FAILED, ERROR_CHALLENGE_CHANNEL_ID_MISMATCH);
     var (seqnoB, sentAmtB, condHashB) = parseSemichannel(schB, keyB, ERROR_CHALLENGE_SIG_B_FAILED, ERROR_CHALLENGE_CHANNEL_ID_MISMATCH);
 
-    // Read quarantined state
+    // Read quarantined state (F4: added originalStart field)
     var qs: slice = quarantine!!.beginParse();
     var qSeqnoA: int = qs.loadUint(64);
     var qSentA: int = qs.loadCoins();
@@ -349,12 +362,16 @@ fun challengeQuarantinedState(msg: slice) {
     var qSeqnoB: int = qs.loadUint(64);
     var qSentB: int = qs.loadCoins();
     var qCondHashB: int = qs.loadUint(256);
-    var quarantineStarted: int = qs.loadUint(32);
+    var originalStart: int = qs.loadUint(32);
+    var lastChallengeTime: int = qs.loadUint(32);
     var prevSignedByA: int = qs.loadInt(1);
     var wasChallenged: int = qs.loadInt(1);
 
-    // Must be within quarantine duration
-    assert(quarantineStarted + closureQuarantineDuration() > blockchain.now()) throw ERROR_CHALLENGE_QUARANTINE_EXPIRED;
+    // Must be within per-round quarantine window (from last challenge)
+    assert(lastChallengeTime + closureQuarantineDuration() > blockchain.now()) throw ERROR_CHALLENGE_QUARANTINE_EXPIRED;
+
+    // F4: total dispute duration cap (3x quarantine duration from original start)
+    assert(originalStart + 3 * closureQuarantineDuration() > blockchain.now()) throw ERROR_CHALLENGE_DISPUTE_EXPIRED;
 
     // Challenger must be counterparty
     assert(!(prevSignedByA == challengedByA)) throw ERROR_CHALLENGE_SAME_PARTY;
@@ -362,11 +379,20 @@ fun challengeQuarantinedState(msg: slice) {
     // At least one seqno must strictly exceed quarantined
     assert((seqnoA > qSeqnoA) | (seqnoB > qSeqnoB)) throw ERROR_CHALLENGE_SEQNO_NOT_SUPERSEDE;
 
-    // Replace quarantine with new state, restart timer
+    // F5: neither seqno may regress
+    assert(seqnoA >= qSeqnoA) throw ERROR_CHALLENGE_SEQNO_NOT_SUPERSEDE;
+    assert(seqnoB >= qSeqnoB) throw ERROR_CHALLENGE_SEQNO_NOT_SUPERSEDE;
+
+    // F3: verify submitted semichannels produce non-negative balances
+    assert(depositA + sentAmtB >= sentAmtA + withdrawnA) throw ERROR_UNCOOP_BALANCE_A_NEGATIVE;
+    assert(depositB + sentAmtA >= sentAmtB + withdrawnB) throw ERROR_UNCOOP_BALANCE_B_NEGATIVE;
+
+    // Replace quarantine with new state, keep originalStart, update lastChallengeTime
     quarantine = beginCell()
         .storeUint(seqnoA, 64).storeCoins(sentAmtA).storeUint(condHashA, 256)
         .storeUint(seqnoB, 64).storeCoins(sentAmtB).storeUint(condHashB, 256)
-        .storeUint(blockchain.now(), 32)
+        .storeUint(originalStart, 32)     // F4: keep original
+        .storeUint(blockchain.now(), 32)  // F4: update lastChallengeTime
         .storeInt(challengedByA, 1)
         .storeInt(true as int, 1)
         .endCell();
@@ -388,7 +414,7 @@ fun settleConditionals(msg: slice) {
 
     var conditionalsCell: cell = msg.loadRef();
 
-    // Read quarantined state
+    // Read quarantined state (F4: added originalStart/lastChallengeTime)
     var qs: slice = quarantine!!.beginParse();
     var seqnoA: int = qs.loadUint(64);
     var qSentA: int = qs.loadCoins();
@@ -396,11 +422,12 @@ fun settleConditionals(msg: slice) {
     var seqnoB: int = qs.loadUint(64);
     var qSentB: int = qs.loadCoins();
     var condHashB: int = qs.loadUint(256);
-    var quarantineStarted: int = qs.loadUint(32);
+    var originalStart: int = qs.loadUint(32);
+    var lastChallengeTime: int = qs.loadUint(32);
     var stateCommitedByA: int = qs.loadInt(1);
     var wasChallenged: int = qs.loadInt(1);
 
-    var quarantineFinished: int = quarantineStarted + closureQuarantineDuration();
+    var quarantineFinished: int = lastChallengeTime + closureQuarantineDuration();
     assert(quarantineFinished <= blockchain.now()) throw ERROR_SETTLE_TOO_EARLY;
     assert(quarantineFinished + closureCloseDuration() > blockchain.now()) throw ERROR_SETTLE_TOO_LATE;
 
@@ -445,7 +472,8 @@ fun settleConditionals(msg: slice) {
     quarantine = beginCell()
         .storeUint(seqnoA, 64).storeCoins(qSentA).storeUint(condHashA, 256)
         .storeUint(seqnoB, 64).storeCoins(qSentB).storeUint(condHashB, 256)
-        .storeUint(quarantineStarted, 32)
+        .storeUint(originalStart, 32)
+        .storeUint(lastChallengeTime, 32)
         .storeInt(stateCommitedByA, 1)
         .storeInt(wasChallenged, 1)
         .endCell();
@@ -466,11 +494,12 @@ fun finishUncooperativeClose() {
     var seqnoB: int = qs.loadUint(64);
     var qSentB: int = qs.loadCoins();
     var condHashB: int = qs.loadUint(256);
-    var quarantineStarted: int = qs.loadUint(32);
+    var originalStart: int = qs.loadUint(32);
+    var lastChallengeTime: int = qs.loadUint(32);
     var committedByA: int = qs.loadInt(1);
     var wasChallenged: int = qs.loadInt(1);
 
-    assert(quarantineStarted +
+    assert(lastChallengeTime +
         closureQuarantineDuration() +
         closureCloseDuration() <= blockchain.now()) throw ERROR_FINISH_TOO_EARLY;
 
@@ -558,7 +587,7 @@ get fun get_channel_state(): int {
     if (quarantine == null) {
         return STATE_OPEN;
     }
-    // Parse quarantine to check timing
+    // Parse quarantine to check timing (F4: originalStart + lastChallengeTime)
     var qs: slice = quarantine!!.beginParse();
     qs.loadUint(64);     // seqnoA
     qs.loadCoins();      // sentA
@@ -566,12 +595,13 @@ get fun get_channel_state(): int {
     qs.loadUint(64);     // seqnoB
     qs.loadCoins();      // sentB
     qs.loadUint(256);    // condHashB
-    var quarantineStarted: int = qs.loadUint(32);
+    qs.loadUint(32);     // originalStart (skip)
+    var lastChallengeTime: int = qs.loadUint(32);
 
-    if (quarantineStarted + closureQuarantineDuration() > blockchain.now()) {
+    if (lastChallengeTime + closureQuarantineDuration() > blockchain.now()) {
         return STATE_CLOSURE_STARTED;
     }
-    if (quarantineStarted + closureQuarantineDuration() + closureCloseDuration() > blockchain.now()) {
+    if (lastChallengeTime + closureQuarantineDuration() + closureCloseDuration() > blockchain.now()) {
         return STATE_SETTLING_CONDITIONALS;
     }
     return STATE_AWAITING_FINALIZATION;

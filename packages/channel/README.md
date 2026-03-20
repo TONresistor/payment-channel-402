@@ -1,6 +1,6 @@
 # pc402-channel
 
-On-chain payment channel lifecycle for TON. Deploy, fund, initialize, commit, close, and handle disputes via the pc402 v2 smart contract.
+On-chain payment channel lifecycle for TON. Deploy, fund, initialize, commit, close, and handle disputes via the pc402 v2.1 smart contract.
 
 ## Install
 
@@ -15,11 +15,15 @@ Peer dependencies: `@ton/core`, `@ton/crypto`. Also requires `@ton/ton` (TonClie
 ```typescript
 import { OnchainChannel, buildSignedSemiChannel } from "pc402-channel";
 
+// Constructor (v0.2): myKeyPair/counterpartyPublicKey/isA/myAddress/counterpartyAddress
 const channel = new OnchainChannel({
   client,                              // TonClient instance
-  keyPairA, keyPairB,                  // Ed25519 key pairs
+  myKeyPair: keyPairA,                 // this party's Ed25519 key pair
+  counterpartyPublicKey: keyPairB.publicKey,
+  isA: true,                           // true if this party is side A
+  myAddress: addressA,
+  counterpartyAddress: addressB,
   channelId: 1n,                       // unique uint128
-  addressA, addressB,                  // TON addresses
   initBalanceA: 0n, initBalanceB: 0n,
   closingConfig: {                     // optional
     quarantineDuration: 3600,          // seconds (default: 0)
@@ -30,16 +34,16 @@ const channel = new OnchainChannel({
 
 // Deploy + fund + init
 await channel.deployAndTopUp(senderA, true, toNano("1"));
-await channel.init(senderA, toNano("1"), 0n, keyPairA);
+await channel.init(senderA, toNano("1"), 0n); // uses this.myKeyPair + this.isA
 
 // Read state
 const state = await channel.getOnchainState();
 // { state: 1, balanceA, balanceB, seqnoA, seqnoB, withdrawnA, withdrawnB, channelId }
 
-// Cooperative close
-const sigA = channel.signClose(sentA, sentB, keyPairA);
-const sigB = channel.signClose(sentA, sentB, keyPairB);
-await channel.cooperativeClose(senderA, sentA, sentB, sigA, sigB);
+// Cooperative close (v0.2): seqnoA/seqnoB added
+const sigA = channel.signClose(seqnoA, seqnoB, sentA, sentB, keyPairA);
+const sigB = channel.signClose(seqnoA, seqnoB, sentA, sentB, keyPairB);
+await channel.cooperativeClose(senderA, seqnoA, seqnoB, sentA, sentB, sigA, sigB);
 ```
 
 ## API
@@ -51,10 +55,10 @@ await channel.cooperativeClose(senderA, sentA, sentB, sigA, sigB);
 | **Lifecycle** | |
 | `deployAndTopUp(via, isA, amount)` | Deploy contract + first deposit |
 | `topUp(via, isA, amount)` | Add funds (before or after init) |
-| `init(via, balanceA, balanceB, signKey)` | Initialize channel (UNINITED → OPEN) |
+| `init(via, balanceA, balanceB)` | Initialize channel (UNINITED → OPEN); uses `this.myKeyPair` + `this.isA` |
 | **Cooperative** | |
-| `signClose(sentA, sentB, keyPair)` | Sign cooperative close payload |
-| `cooperativeClose(via, sentA, sentB, sigA, sigB)` | Close and distribute funds |
+| `signClose(seqnoA, seqnoB, sentA, sentB, keyPair)` | Sign cooperative close payload |
+| `cooperativeClose(via, seqnoA, seqnoB, sentA, sentB, sigA, sigB)` | Close and distribute funds |
 | `signCommit(seqnoA, seqnoB, sentA, sentB, kp, wA?, wB?)` | Sign commit payload |
 | `cooperativeCommit(via, seqnoA, seqnoB, sentA, sentB, sigA, sigB, wA?, wB?)` | Advance seqnos + optional withdrawal |
 | **Dispute** | |
@@ -76,11 +80,11 @@ await channel.cooperativeClose(senderA, sentA, sentB, sigA, sigB);
 |---|---|
 | `buildSignedSemiChannel(chId, seqno, sent, kp)` | Build signed semi-channel cell for dispute |
 | `createChannelStateInit(config)` | Build StateInit for contract deployment |
-| `PAYMENT_CHANNEL_CODE` | Compiled v2 contract bytecode (Cell) |
+| `PAYMENT_CHANNEL_CODE` | Compiled v2.1 contract bytecode (Cell), includes 6 security fixes over v2 |
 
 ### Constants
 
-All opcodes (`OP_TOP_UP`, `OP_INIT_CHANNEL`, ...) and signature tags (`TAG_INIT`, `TAG_STATE`, ...) are exported for advanced use.
+All opcodes (`OP_TOP_UP`, `OP_INIT_CHANNEL`, ...) are exported for advanced use. Signature tags are re-exported from `pc402-core` (single source of truth).
 
 ## Channel States
 

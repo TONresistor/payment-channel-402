@@ -13,17 +13,25 @@
 
 import { beginCell, type Cell } from "@ton/core";
 
-/**
- * 32-bit tag used in per-party SemiChannelBody cells (state updates, uncooperative close).
- * Value: `0x50433453` ("PC4S" — Payment Channel 402 State).
- */
-export const TAG_STATE = 0x50433453;
+// ---------------------------------------------------------------------------
+// Signature tags — single source of truth for all v2 contract tags
+// Shared by pc402-core (off-chain) and pc402-channel (on-chain)
+// ---------------------------------------------------------------------------
 
-/**
- * 32-bit tag used in cooperative close bodies (signed by both parties).
- * Matches `TAG_COOPERATIVE_CLOSE` in the v2 contract (`0x8243e9a3`).
- */
+/** Per-party state body. `0x50433453` ("PC4S"). */
+export const TAG_STATE = 0x50433453;
+/** Cooperative close body (both parties sign). `0x8243e9a3`. */
 export const TAG_CLOSE = 0x8243e9a3;
+/** Cooperative commit body (both parties sign). `0x4a390cac`. */
+export const TAG_COMMIT = 0x4a390cac;
+/** Init payload (one party signs). `0x481ebc44`. */
+export const TAG_INIT = 0x481ebc44;
+/** Start uncooperative close outer payload. `0x8c623692`. */
+export const TAG_START_UNCOOPERATIVE_CLOSE = 0x8c623692;
+/** Challenge quarantined state outer payload. `0xb8a21379`. */
+export const TAG_CHALLENGE_QUARANTINE = 0xb8a21379;
+/** Settle conditionals payload. `0x14588aab`. */
+export const TAG_SETTLE_CONDITIONALS = 0x14588aab;
 
 /**
  * Build a raw SemiChannelBody cell (inner body without tag/channelId header).

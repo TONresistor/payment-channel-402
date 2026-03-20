@@ -25,13 +25,13 @@ Client requests a paid resource. Server responds `402` with channel info and pri
 ```typescript
 // Server
 const header = buildPaymentRequired({
-  network: "ton:-239",
-  amount: "1000000",
-  channelAddress: "EQ...",
-  channelId: "1",
-  publicKeyB: serverPublicKeyHex,
-  initBalanceA: "100000000",
-  initBalanceB: "0",
+  price: 1000000n,
+  serverPublicKey: serverKP.publicKey,
+  serverAddress: "EQ...",
+  channelAddress: "EQ...",  // optional for discovery
+  channelId: 1n,            // optional for discovery
+  initBalanceA: 100000000n,
+  initBalanceB: 0n,
 });
 res.status(402).set("PAYMENT-REQUIRED", header).end();
 
@@ -44,9 +44,19 @@ const req = parsePaymentRequired(header);
 Client deploys a payment channel using the info from step 1. Two on-chain transactions.
 
 ```typescript
-const channel = new OnchainChannel({ client, keyPairA, keyPairB, channelId, addressA, addressB, ... });
+const channel = new OnchainChannel({
+  client,
+  myKeyPair: keyPairA,
+  counterpartyPublicKey: keyPairB.publicKey,
+  isA: true,
+  channelId,
+  myAddress: addressA,
+  counterpartyAddress: addressB,
+  initBalanceA: toNano("1"),
+  initBalanceB: 0n,
+});
 await channel.deployAndTopUp(senderA, true, toNano("1"));
-await channel.init(senderA, toNano("1"), 0n, keyPairA);
+await channel.init(senderA, toNano("1"), 0n);
 ```
 
 ### 3. Pay (off-chain)
@@ -92,9 +102,9 @@ Both parties sign the final state. One on-chain transaction distributes all fund
 ```typescript
 const sentA = balanceToSentCoins(initBalanceA, state.balanceA);
 const sentB = balanceToSentCoins(initBalanceB, state.balanceB);
-const sigA = channel.signClose(sentA, sentB, keyPairA);
-const sigB = channel.signClose(sentA, sentB, keyPairB);
-await channel.cooperativeClose(senderA, sentA, sentB, sigA, sigB);
+const sigA = channel.signClose(BigInt(state.seqnoA), BigInt(state.seqnoB), sentA, sentB, keyPairA);
+const sigB = channel.signClose(BigInt(state.seqnoA), BigInt(state.seqnoB), sentA, sentB, keyPairB);
+await channel.cooperativeClose(senderA, BigInt(state.seqnoA), BigInt(state.seqnoB), sentA, sentB, sigA, sigB);
 ```
 
 ### 6. Dispute
@@ -117,12 +127,14 @@ await channel.finishUncooperativeClose(senderA);
 | `packages/core/`    | `pc402-core`  off-chain signing, HTTP 402, state management |
 | `packages/channel/` | `pc402-channel`  on-chain lifecycle, dispute resolution |
 | `contracts/src/`    | Payment channel smart contract (Tolk v2, 7 files)            |
-| `contracts/test/`   | 30 sandbox tests                                             |
+| `contracts/test/`   | 36 sandbox tests                                             |
 | `test/e2e/`         | 3 E2E mainnet test suites                                    |
 
 ## Smart Contract
 
 The payment channel contract is written in [Tolk](https://docs.ton.org/develop/tolk/overview) and included in `contracts/src/`. Compiled bytecode is embedded in `pc402-channel`.
+
+v2.1 includes 6 security fixes (F1-F6): seqno inclusion in close/commit signatures, unique TAG_STATE domain separation, dust limit, excess refund pattern, and related hardening. See [contracts/README.md](contracts/README.md) for details.
 
 ### Balance Model
 
@@ -176,17 +188,16 @@ If a party's final payout is below 0.001 TON, the amount is redirected to the co
 | `errors.tolk` | Error codes by operation (100-179) |
 | `fees.tolk` | DUST_LIMIT constant |
 | `utils.tolk` | TVM continuation helper |
-| `schema.tlb` | TL-B schema (reference) |
 
 ## Testing
 
 ```bash
-npm test                                          # 107 unit + sandbox tests
+npm test                                          # 120 unit + sandbox tests
 npm run lint                                      # biome + tsc
-cd contracts && npx vitest run                    # 30 contract tests
+cd contracts && npx vitest run                    # 36 contract tests (incl. 6 security regression)
 
 # E2E mainnet (requires funded wallets + .env)
-npx vitest run -c test/e2e/vitest.config.ts
+npx vitest run -c test/e2e/vitest.config.ts       # 3 E2E mainnet (+ 8 contract/sandbox inline)
 ```
 
 ## Why

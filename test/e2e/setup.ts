@@ -165,11 +165,12 @@ export function createChannel(
 
   const channel = new OnchainChannel({
     client: ctx.client,
-    keyPairA: ctx.keyPairA,
-    keyPairB: ctx.keyPairB,
+    myKeyPair: ctx.keyPairA,
+    counterpartyPublicKey: ctx.keyPairB.publicKey,
+    isA: true,
     channelId,
-    addressA: ctx.addressA,
-    addressB: ctx.addressB,
+    myAddress: ctx.addressA,
+    counterpartyAddress: ctx.addressB,
     initBalanceA: 0n,
     initBalanceB: 0n,
     closingConfig: {
