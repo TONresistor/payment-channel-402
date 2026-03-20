@@ -160,6 +160,8 @@ export type PC402PaymentResponse =
       closeRequest?: PC402CloseRequest;
       /** Optional server-to-client payment (bidirectional). Contains a signed state from the server (party B). */
       serverPayment?: PC402ServerPayment;
+      /** Optional server's signature over its own semi-channel body (for uncooperative close). Base64-encoded 64 bytes. */
+      semiChannelSignature?: string;
     }
   | {
       /** Payment rejected. */

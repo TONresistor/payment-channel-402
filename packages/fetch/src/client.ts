@@ -115,31 +115,43 @@ export function createPC402Fetch(options: PC402FetchOptions): PC402Fetch {
     if (prResponseHeader) {
       const paymentResponse = parsePaymentResponse(prResponseHeader);
 
-      if (paymentResponse?.success && paymentResponse.commitRequest) {
-        const cr = paymentResponse.commitRequest;
+      if (paymentResponse?.success) {
+        await pool.saveCounterSignature(channel.address, paymentResponse.counterSignature);
 
-        // Verify server's commit signature and co-sign if valid
-        const serverSig = Buffer.from(cr.serverSignature, "base64");
-        const valid = paymentChannel.verifyCommit(
-          BigInt(cr.seqnoA),
-          BigInt(cr.seqnoB),
-          BigInt(cr.sentA),
-          BigInt(cr.sentB),
-          serverSig,
-          BigInt(cr.withdrawA),
-          BigInt(cr.withdrawB),
-        );
+        if (paymentResponse.closeRequest) {
+          await pool.saveCloseRequest(channel.address, paymentResponse.closeRequest);
+        }
 
-        if (valid) {
-          const commitSig = paymentChannel.signCommit(
+        if (paymentResponse.semiChannelSignature) {
+          await pool.saveSemiChannelSignature(channel.address, paymentResponse.semiChannelSignature);
+        }
+
+        if (paymentResponse.commitRequest) {
+          const cr = paymentResponse.commitRequest;
+
+          // Verify server's commit signature and co-sign if valid
+          const serverSig = Buffer.from(cr.serverSignature, "base64");
+          const valid = paymentChannel.verifyCommit(
             BigInt(cr.seqnoA),
             BigInt(cr.seqnoB),
             BigInt(cr.sentA),
             BigInt(cr.sentB),
+            serverSig,
             BigInt(cr.withdrawA),
             BigInt(cr.withdrawB),
           );
-          await pool.savePendingCommit(channel.address, commitSig);
+
+          if (valid) {
+            const commitSig = paymentChannel.signCommit(
+              BigInt(cr.seqnoA),
+              BigInt(cr.seqnoB),
+              BigInt(cr.sentA),
+              BigInt(cr.sentB),
+              BigInt(cr.withdrawA),
+              BigInt(cr.withdrawB),
+            );
+            await pool.savePendingCommit(channel.address, commitSig);
+          }
         }
       }
     }

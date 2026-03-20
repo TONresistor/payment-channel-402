@@ -9,6 +9,3 @@ dist/
 # Dev artifacts
 .obsidian/
 
-# Not yet published
-packages/cli/
-packages/mcp/

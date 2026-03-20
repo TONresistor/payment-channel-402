@@ -58,3 +58,13 @@ jobs:
         run: npm publish --workspace packages/fetch --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish pc402-cli
+        run: npm publish --workspace packages/cli --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish pc402-mcp
+        run: npm publish --workspace packages/mcp --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

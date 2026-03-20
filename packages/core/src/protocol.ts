@@ -247,6 +247,7 @@ export function buildPaymentResponse(opts: {
     state: { balanceA: bigint; balanceB: bigint; seqnoA: number; seqnoB: number };
     signature: Buffer;
   };
+  semiChannelSignature?: Buffer;
 }): string {
   const response: PC402PaymentResponse = {
     success: true,
@@ -282,6 +283,9 @@ export function buildPaymentResponse(opts: {
         },
         signature: Buffer.from(opts.serverPayment.signature).toString("base64"),
       },
+    }),
+    ...(opts.semiChannelSignature && {
+      semiChannelSignature: Buffer.from(opts.semiChannelSignature).toString("base64"),
     }),
   };
   return encodeHeader(response);

@@ -5,6 +5,7 @@ export default defineConfig({
     projects: [
       "packages/core",
       "packages/channel",
+      "packages/cli",
     ],
     passWithNoTests: true,
   },

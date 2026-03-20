@@ -1,0 +1,37 @@
+{
+  "name": "pc402-mcp",
+  "version": "0.2.0",
+  "description": "MCP server exposing pc402 payment channels as tools for AI agents",
+  "type": "module",
+  "bin": {
+    "pc402-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "pc402-core": "*",
+    "pc402-channel": "*",
+    "pc402-fetch": "*",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@ton/ton": ">=15.0.0",
+    "zod": "^3.24.0"
+  },
+  "peerDependencies": {
+    "@ton/core": ">=0.60.0",
+    "@ton/crypto": ">=3.3.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TONresistor/payment-channel-402"
+  }
+}

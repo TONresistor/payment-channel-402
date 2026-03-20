@@ -19,6 +19,7 @@ interface ChannelConfig {
   channelId: string;
   channelAddress: string;
   serverPublicKey: string;
+  serverAddress: string;
   initBalanceA: string;
   initBalanceB: string;
 }
@@ -34,6 +35,9 @@ const CONFIG_PREFIX = "pool:config:";
 const STATE_PREFIX = "pool:state:";
 const CHANNELS_KEY = "pool:channels";
 const COMMIT_PREFIX = "pool:commit:";
+const COUNTER_SIG_PREFIX = "pool:countersig:";
+const CLOSE_REQ_PREFIX = "pool:closereq:";
+const SEMI_SIG_PREFIX = "pool:semisig:";
 
 function serializeState(s: ChannelState): string {
   return JSON.stringify({
@@ -106,6 +110,7 @@ export class ChannelPool {
       channelId: ch.channelId,
       channelAddress: ch.address,
       serverPublicKey: requirements.payee.publicKey,
+      serverAddress: requirements.payee.address,
       initBalanceA: ch.initBalanceA,
       initBalanceB: ch.initBalanceB,
     };
@@ -145,6 +150,9 @@ export class ChannelPool {
     await this.storage.delete(CONFIG_PREFIX + channelAddress);
     await this.storage.delete(STATE_PREFIX + channelAddress);
     await this.storage.delete(COMMIT_PREFIX + channelAddress);
+    await this.storage.delete(COUNTER_SIG_PREFIX + channelAddress);
+    await this.storage.delete(CLOSE_REQ_PREFIX + channelAddress);
+    await this.storage.delete(SEMI_SIG_PREFIX + channelAddress);
 
     const channels = await this.listChannels();
     const filtered = channels.filter((a) => a !== channelAddress);
@@ -162,6 +170,37 @@ export class ChannelPool {
     if (!raw) return null;
     await this.storage.delete(COMMIT_PREFIX + channelAddress);
     return Buffer.from(raw, "base64");
+  }
+
+  /** Store the server's counterSignature (base64) from a PAYMENT-RESPONSE. */
+  async saveCounterSignature(channelAddress: string, signature: string): Promise<void> {
+    await this.storage.set(COUNTER_SIG_PREFIX + channelAddress, signature);
+  }
+
+  /** Retrieve the server's counterSignature for a channel, or null. */
+  async getCounterSignature(channelAddress: string): Promise<string | null> {
+    return this.storage.get(COUNTER_SIG_PREFIX + channelAddress);
+  }
+
+  /** Store the server's closeRequest JSON from a PAYMENT-RESPONSE. */
+  async saveCloseRequest(channelAddress: string, closeRequest: object): Promise<void> {
+    await this.storage.set(CLOSE_REQ_PREFIX + channelAddress, JSON.stringify(closeRequest));
+  }
+
+  /** Retrieve the server's closeRequest for a channel, or null. */
+  async getCloseRequest(channelAddress: string): Promise<object | null> {
+    const raw = await this.storage.get(CLOSE_REQ_PREFIX + channelAddress);
+    return raw ? (JSON.parse(raw) as object) : null;
+  }
+
+  /** Store the server's semiChannelSignature (base64) from a PAYMENT-RESPONSE. */
+  async saveSemiChannelSignature(channelAddress: string, signature: string): Promise<void> {
+    await this.storage.set(SEMI_SIG_PREFIX + channelAddress, signature);
+  }
+
+  /** Retrieve the server's semiChannelSignature for a channel, or null. */
+  async getSemiChannelSignature(channelAddress: string): Promise<string | null> {
+    return this.storage.get(SEMI_SIG_PREFIX + channelAddress);
   }
 
   // -------------------------------------------------------------------------
