@@ -21,6 +21,7 @@ import {
   balanceToSentCoins,
   buildSemiChannelBodyWithHeader,
   TAG_CLOSE,
+  TAG_COMMIT,
   TAG_STATE,
 } from "./cell.js";
 import { ChannelError, PC402ErrorCode, ValidationError } from "./errors.js";
@@ -215,7 +216,6 @@ export class PaymentChannel {
     withdrawA: bigint = 0n,
     withdrawB: bigint = 0n,
   ): Buffer {
-    const TAG_COMMIT = 0x4a390cac;
     const payloadCell = beginCell()
       .storeUint(TAG_COMMIT, 32)
       .storeUint(this.config.channelId, 128)
@@ -251,7 +251,6 @@ export class PaymentChannel {
     withdrawA: bigint = 0n,
     withdrawB: bigint = 0n,
   ): boolean {
-    const TAG_COMMIT = 0x4a390cac;
     const payloadCell = beginCell()
       .storeUint(TAG_COMMIT, 32)
       .storeUint(this.config.channelId, 128)
@@ -291,10 +290,12 @@ export class PaymentChannel {
     const sentB = balanceToSentCoins(initBalanceB, state.balanceB);
 
     if (tag === TAG_CLOSE) {
-      // Cooperative close: both parties sign the same body containing sentA + sentB
+      // Cooperative close: both parties sign the same body containing seqnos + sentA + sentB
       return beginCell()
         .storeUint(TAG_CLOSE, 32)
         .storeUint(channelId, 128)
+        .storeUint(state.seqnoA, 64)
+        .storeUint(state.seqnoB, 64)
         .storeCoins(sentA)
         .storeCoins(sentB)
         .endCell();

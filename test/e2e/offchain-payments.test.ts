@@ -118,11 +118,13 @@ describe("e2e mainnet: off-chain payments", { timeout: 120_000 }, () => {
     expect(pcA.verifyClose(cur, pcSigB)).toBe(true);
     expect(pcB.verifyClose(cur, pcSigA)).toBe(true);
 
-    // Close on-chain
-    const closeSigA = channel.signClose(sentA, sentB, ctx.keyPairA);
-    const closeSigB = channel.signClose(sentA, sentB, ctx.keyPairB);
+    // Close on-chain (seqnos from final state)
+    const seqA = BigInt(cur.seqnoA);
+    const seqB = BigInt(cur.seqnoB);
+    const closeSigA = channel.signClose(seqA, seqB, sentA, sentB, ctx.keyPairA);
+    const closeSigB = channel.signClose(seqA, seqB, sentA, sentB, ctx.keyPairB);
     await sendAndWait(ctx.walletA, () =>
-      channel.cooperativeClose(ctx.senderA, sentA, sentB, closeSigA, closeSigB),
+      channel.cooperativeClose(ctx.senderA, seqA, seqB, sentA, sentB, closeSigA, closeSigB),
     );
     await waitDrained(ctx.client, address);
 

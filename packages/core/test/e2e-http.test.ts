@@ -35,6 +35,7 @@ import type { ChannelState } from "../src/types.js";
 // ---------------------------------------------------------------------------
 
 const CHANNEL_ADDRESS = "EQAe2eProtocolTestAddress0000000";
+const SERVER_ADDRESS = "EQServerE2eWalletAddress00000000000";
 const CHANNEL_ID = 200_000n;
 const INIT_BALANCE_A = 1_000_000_000n; // 1 TON
 const INIT_BALANCE_B = 0n;
@@ -82,9 +83,10 @@ async function startServer(): Promise<TestServer> {
     if (!rawHeader) {
       const paymentRequiredHeader = buildPaymentRequired({
         price: PRICE,
+        serverPublicKey: Buffer.from(serverKeyPair.publicKey),
+        serverAddress: SERVER_ADDRESS,
         channelAddress: CHANNEL_ADDRESS,
         channelId: CHANNEL_ID,
-        serverPublicKey: Buffer.from(serverKeyPair.publicKey),
         initBalanceA: INIT_BALANCE_A,
         initBalanceB: INIT_BALANCE_B,
       });
@@ -180,10 +182,14 @@ async function pc402Request(
   const newState = clientChannel.createPaymentState(currentState, price);
   const signature = clientChannel.signState(newState);
 
+  if (!requirements.channel) {
+    throw new Error("Server did not include channel info in PAYMENT-REQUIRED");
+  }
+
   // Step 4: Build PAYMENT-SIGNATURE header
   const paymentSigHeader = buildPaymentSignature({
-    channelAddress: requirements.channelAddress,
-    channelId: requirements.channelId,
+    channelAddress: requirements.channel.address,
+    channelId: requirements.channel.channelId,
     state: newState,
     signature,
     publicKey: Buffer.from(clientChannel.config.myKeyPair.publicKey),
@@ -232,8 +238,9 @@ describe("E2E HTTP: full c402 flow using only pc402-core protocol helpers", () =
     expect(requirements).not.toBeNull();
     expect(requirements?.scheme).toBe("pc402");
     expect(requirements?.amount).toBe(PRICE.toString());
-    expect(requirements?.channelAddress).toBe(CHANNEL_ADDRESS);
-    expect(requirements?.channelId).toBe(CHANNEL_ID.toString());
+    expect(requirements?.payee.address).toBe(SERVER_ADDRESS);
+    expect(requirements?.channel?.address).toBe(CHANNEL_ADDRESS);
+    expect(requirements?.channel?.channelId).toBe(CHANNEL_ID.toString());
   });
 
   it("2. Full flow: GET -> 402 -> sign -> retry -> 200 + PAYMENT-RESPONSE", async () => {
@@ -261,10 +268,11 @@ describe("E2E HTTP: full c402 flow using only pc402-core protocol helpers", () =
 
     const paymentResponse = parsePaymentResponse(rawResponse!);
     expect(paymentResponse).not.toBeNull();
-    expect(paymentResponse?.success).toBe(true);
+    expect(paymentResponse!.success).toBe(true);
+    if (!paymentResponse || !paymentResponse.success) return;
 
     // Verify the counter-signature
-    const counterSigBuf = Buffer.from(paymentResponse?.counterSignature, "base64");
+    const counterSigBuf = Buffer.from(paymentResponse.counterSignature, "base64");
     const isValid = clientChannel.verifyState(newState, counterSigBuf);
     expect(isValid).toBe(true);
   });

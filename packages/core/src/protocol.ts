@@ -65,25 +65,27 @@ export function decodeHeader<T>(header: string): T | null {
 /**
  * Build the `PAYMENT-REQUIRED` header value (base64-encoded JSON).
  *
- * Sent by the server in a 402 response to tell the client the price,
- * channel address, and configuration needed to open a channel and pay.
+ * Sent by the server in a 402 response. Always includes `payee` (server identity).
+ * Includes `channel` only when channelAddress is provided (known client channel).
  *
  * @param opts.price           - Price per request in nanotons
- * @param opts.channelAddress  - On-chain contract address of the payment channel
- * @param opts.channelId       - Unique channel identifier (uint128)
  * @param opts.serverPublicKey - Server's Ed25519 public key (32 bytes)
- * @param opts.initBalanceA    - Client's initial deposit in nanotons
- * @param opts.initBalanceB    - Server's initial deposit in nanotons (default 0)
+ * @param opts.serverAddress   - Server's TON wallet address
+ * @param opts.channelAddress  - On-chain contract address (optional, if channel is known)
+ * @param opts.channelId       - Unique channel identifier (optional)
+ * @param opts.initBalanceA    - Client's initial deposit in nanotons (optional)
+ * @param opts.initBalanceB    - Server's initial deposit in nanotons (optional, default 0)
  * @param opts.asset           - Asset identifier (default "TON")
  * @param opts.network         - CAIP-2 network identifier (default "ton:-239")
  * @returns Base64-encoded JSON string for the `PAYMENT-REQUIRED` HTTP header
  */
 export function buildPaymentRequired(opts: {
   price: bigint;
-  channelAddress: string;
-  channelId: bigint;
   serverPublicKey: Buffer;
-  initBalanceA: bigint;
+  serverAddress: string;
+  channelAddress?: string;
+  channelId?: bigint;
+  initBalanceA?: bigint;
   initBalanceB?: bigint;
   asset?: string;
   network?: string;
@@ -93,13 +95,18 @@ export function buildPaymentRequired(opts: {
     network: opts.network ?? "ton:-239",
     asset: opts.asset ?? "TON",
     amount: opts.price.toString(),
-    channelAddress: opts.channelAddress,
-    channelId: opts.channelId.toString(),
-    extra: {
-      initBalanceA: opts.initBalanceA.toString(),
-      initBalanceB: (opts.initBalanceB ?? 0n).toString(),
-      publicKeyB: Buffer.from(opts.serverPublicKey).toString("hex"),
+    payee: {
+      publicKey: Buffer.from(opts.serverPublicKey).toString("hex"),
+      address: opts.serverAddress,
     },
+    ...(opts.channelAddress !== undefined && {
+      channel: {
+        address: opts.channelAddress,
+        channelId: (opts.channelId ?? 0n).toString(),
+        initBalanceA: (opts.initBalanceA ?? 0n).toString(),
+        initBalanceB: (opts.initBalanceB ?? 0n).toString(),
+      },
+    }),
   };
   return encodeHeader(requirements);
 }
@@ -108,11 +115,12 @@ export function buildPaymentRequired(opts: {
  * Parse the `PAYMENT-REQUIRED` header value.
  *
  * @param header - Raw base64-encoded `PAYMENT-REQUIRED` header value
- * @returns Parsed {@link PC402PaymentRequirements}, or null if the header is missing, malformed, or not a pc402 scheme
+ * @returns Parsed {@link PC402PaymentRequirements}, or null if the header is missing, malformed, not a pc402 scheme, or missing payee
  */
 export function parsePaymentRequired(header: string): PC402PaymentRequirements | null {
   const parsed = decodeHeader<PC402PaymentRequirements>(header);
   if (!parsed || parsed.scheme !== "pc402") return null;
+  if (!parsed.payee) return null;
   return parsed;
 }
 
@@ -145,6 +153,8 @@ export function buildPaymentSignature(opts: {
   initBalanceB?: bigint;
   /** Client's commit co-signature (response to a commitRequest from the server) */
   commitSignature?: Buffer;
+  /** Client's close co-signature (response to a closeRequest from the server) */
+  closeSignature?: Buffer;
 }): string {
   const payload: PC402PaymentPayload = {
     channelAddress: opts.channelAddress,
@@ -161,6 +171,9 @@ export function buildPaymentSignature(opts: {
     ...(opts.initBalanceB !== undefined && { initBalanceB: opts.initBalanceB.toString() }),
     ...(opts.commitSignature && {
       commitSignature: Buffer.from(opts.commitSignature).toString("base64"),
+    }),
+    ...(opts.closeSignature && {
+      closeSignature: Buffer.from(opts.closeSignature).toString("base64"),
     }),
   };
 
@@ -206,6 +219,8 @@ export function parsePaymentSignature(header: string): { payload: PC402PaymentPa
  *
  * @param opts.counterSignature - Server's 64-byte Ed25519 counter-signature over the accepted state
  * @param opts.network          - CAIP-2 network identifier (default "ton:-239")
+ * @param opts.commitRequest    - Optional commit co-sign request
+ * @param opts.closeRequest     - Optional close co-sign request
  * @returns Base64-encoded JSON string for the `PAYMENT-RESPONSE` HTTP header
  */
 export function buildPaymentResponse(opts: {
@@ -219,6 +234,18 @@ export function buildPaymentResponse(opts: {
     withdrawA: bigint;
     withdrawB: bigint;
     serverSignature: Buffer;
+  };
+  closeRequest?: {
+    seqnoA: number;
+    seqnoB: number;
+    sentA: bigint;
+    sentB: bigint;
+    serverSignature: Buffer;
+  };
+  /** Server-to-client payment (bidirectional). Server signs a state where it pays the client. */
+  serverPayment?: {
+    state: { balanceA: bigint; balanceB: bigint; seqnoA: number; seqnoB: number };
+    signature: Buffer;
   };
 }): string {
   const response: PC402PaymentResponse = {
@@ -236,6 +263,50 @@ export function buildPaymentResponse(opts: {
         serverSignature: Buffer.from(opts.commitRequest.serverSignature).toString("base64"),
       },
     }),
+    ...(opts.closeRequest && {
+      closeRequest: {
+        seqnoA: opts.closeRequest.seqnoA,
+        seqnoB: opts.closeRequest.seqnoB,
+        sentA: opts.closeRequest.sentA.toString(),
+        sentB: opts.closeRequest.sentB.toString(),
+        serverSignature: Buffer.from(opts.closeRequest.serverSignature).toString("base64"),
+      },
+    }),
+    ...(opts.serverPayment && {
+      serverPayment: {
+        state: {
+          balanceA: opts.serverPayment.state.balanceA.toString(),
+          balanceB: opts.serverPayment.state.balanceB.toString(),
+          seqnoA: opts.serverPayment.state.seqnoA,
+          seqnoB: opts.serverPayment.state.seqnoB,
+        },
+        signature: Buffer.from(opts.serverPayment.signature).toString("base64"),
+      },
+    }),
+  };
+  return encodeHeader(response);
+}
+
+/**
+ * Build an error `PAYMENT-RESPONSE` header value (base64-encoded JSON).
+ *
+ * Sent by the server when rejecting a payment.
+ *
+ * @param error   - Machine-readable error code
+ * @param message - Human-readable description
+ * @param network - CAIP-2 network identifier (default "ton:-239")
+ * @returns Base64-encoded JSON string for the `PAYMENT-RESPONSE` HTTP header
+ */
+export function buildPaymentError(
+  error: VerifyErrorCode,
+  message: string,
+  network?: string,
+): string {
+  const response: PC402PaymentResponse = {
+    success: false,
+    error,
+    errorMessage: message,
+    network: network ?? "ton:-239",
   };
   return encodeHeader(response);
 }
@@ -273,6 +344,12 @@ export interface VerifyPaymentResult {
   state?: ChannelState;
   /** Amount actually paid in nanotons (only set when `valid` is true). */
   paidAmount?: bigint;
+  /** Passthrough of commitSignature from payload (only set when present and valid). */
+  commitSignature?: string;
+  /** Passthrough of closeSignature from payload (only set when present and valid). */
+  closeSignature?: string;
+  /** True when client's balanceA reaches 0 — channel is fully exhausted. */
+  channelExhausted?: boolean;
 }
 
 /**
@@ -358,6 +435,17 @@ export function verifyPaymentSignature(
   }
 
   // ------------------------------------------------------------------
+  // 3b. publicKey must match the known counterparty key
+  // ------------------------------------------------------------------
+  if (!publicKeyBuffer.equals(channel.config.hisPublicKey)) {
+    return {
+      valid: false,
+      error: "invalid_payload",
+      errorMessage: "publicKey does not match known counterparty key",
+    };
+  }
+
+  // ------------------------------------------------------------------
   // 4. Reconstruct ChannelState (string -> bigint)
   // ------------------------------------------------------------------
   let newState: ChannelState;
@@ -411,13 +499,25 @@ export function verifyPaymentSignature(
   }
 
   // ------------------------------------------------------------------
-  // 7. Seqno must be strictly greater than last accepted
+  // 7. seqnoA must be strictly greater than last accepted
   // ------------------------------------------------------------------
   if (lastState !== null && newState.seqnoA <= lastState.seqnoA) {
     return {
       valid: false,
       error: "stale_seqno",
       errorMessage: `seqnoA must be > ${lastState.seqnoA}, got ${newState.seqnoA}`,
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // 7b. seqnoB must not change (client / party A must not modify it)
+  // ------------------------------------------------------------------
+  const expectedSeqnoB = lastState !== null ? lastState.seqnoB : 0;
+  if (newState.seqnoB !== expectedSeqnoB) {
+    return {
+      valid: false,
+      error: "stale_seqno",
+      errorMessage: `seqnoB must not change: expected ${expectedSeqnoB}, got ${newState.seqnoB}`,
     };
   }
 
@@ -439,5 +539,8 @@ export function verifyPaymentSignature(
     valid: true,
     state: newState,
     paidAmount: paid,
+    ...(payload.commitSignature && { commitSignature: payload.commitSignature }),
+    ...(payload.closeSignature && { closeSignature: payload.closeSignature }),
+    ...(newState.balanceA === 0n && { channelExhausted: true }),
   };
 }

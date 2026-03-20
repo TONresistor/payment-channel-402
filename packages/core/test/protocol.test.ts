@@ -10,6 +10,7 @@ import { keyPairFromSeed } from "@ton/crypto";
 import { describe, expect, it } from "vitest";
 import { PaymentChannel } from "../src/channel.js";
 import {
+  buildPaymentError,
   buildPaymentRequired,
   buildPaymentResponse,
   buildPaymentSignature,
@@ -27,6 +28,7 @@ import type { ChannelConfig, ChannelState } from "../src/types.js";
 // ---------------------------------------------------------------------------
 
 const CHANNEL_ADDRESS = "EQAbc123testChannelAddress000000";
+const SERVER_ADDRESS = "EQServerWalletAddress0000000000000";
 const CHANNEL_ID = 42_000_000n;
 const INIT_BALANCE_A = 1_000_000_000n; // 1 TON
 const INIT_BALANCE_B = 0n;
@@ -112,12 +114,13 @@ describe("encodeHeader / decodeHeader", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildPaymentRequired / parsePaymentRequired", () => {
-  it("round-trip preserves all fields", () => {
+  it("round-trip preserves all fields (with channel)", () => {
     const header = buildPaymentRequired({
       price: PRICE,
+      serverPublicKey: Buffer.from(serverKeyPair.publicKey),
+      serverAddress: SERVER_ADDRESS,
       channelAddress: CHANNEL_ADDRESS,
       channelId: CHANNEL_ID,
-      serverPublicKey: Buffer.from(serverKeyPair.publicKey),
       initBalanceA: INIT_BALANCE_A,
       initBalanceB: INIT_BALANCE_B,
     });
@@ -128,19 +131,34 @@ describe("buildPaymentRequired / parsePaymentRequired", () => {
     expect(parsed?.network).toBe("ton:-239");
     expect(parsed?.asset).toBe("TON");
     expect(parsed?.amount).toBe(PRICE.toString());
-    expect(parsed?.channelAddress).toBe(CHANNEL_ADDRESS);
-    expect(parsed?.channelId).toBe(CHANNEL_ID.toString());
-    expect(parsed?.extra.initBalanceA).toBe(INIT_BALANCE_A.toString());
-    expect(parsed?.extra.initBalanceB).toBe(INIT_BALANCE_B.toString());
-    expect(parsed?.extra.publicKeyB).toBe(Buffer.from(serverKeyPair.publicKey).toString("hex"));
+    expect(parsed?.payee.publicKey).toBe(Buffer.from(serverKeyPair.publicKey).toString("hex"));
+    expect(parsed?.payee.address).toBe(SERVER_ADDRESS);
+    expect(parsed?.channel?.address).toBe(CHANNEL_ADDRESS);
+    expect(parsed?.channel?.channelId).toBe(CHANNEL_ID.toString());
+    expect(parsed?.channel?.initBalanceA).toBe(INIT_BALANCE_A.toString());
+    expect(parsed?.channel?.initBalanceB).toBe(INIT_BALANCE_B.toString());
+  });
+
+  it("discovery mode (no channel) — payee present, channel absent", () => {
+    const header = buildPaymentRequired({
+      price: PRICE,
+      serverPublicKey: Buffer.from(serverKeyPair.publicKey),
+      serverAddress: SERVER_ADDRESS,
+    });
+
+    const parsed = parsePaymentRequired(header);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.payee.publicKey).toBe(Buffer.from(serverKeyPair.publicKey).toString("hex"));
+    expect(parsed?.channel).toBeUndefined();
   });
 
   it("custom network and asset", () => {
     const header = buildPaymentRequired({
       price: 1n,
+      serverPublicKey: Buffer.from(serverKeyPair.publicKey),
+      serverAddress: SERVER_ADDRESS,
       channelAddress: "addr",
       channelId: 1n,
-      serverPublicKey: Buffer.from(serverKeyPair.publicKey),
       initBalanceA: 100n,
       network: "ton:testnet",
       asset: "JETTON",
@@ -153,6 +171,11 @@ describe("buildPaymentRequired / parsePaymentRequired", () => {
 
   it("returns null for non-pc402 scheme", () => {
     const badHeader = encodeHeader({ scheme: "other", amount: "100" });
+    expect(parsePaymentRequired(badHeader)).toBeNull();
+  });
+
+  it("returns null for missing payee", () => {
+    const badHeader = encodeHeader({ scheme: "pc402", amount: "100", network: "ton:-239" });
     expect(parsePaymentRequired(badHeader)).toBeNull();
   });
 
@@ -612,5 +635,260 @@ describe("commit protocol", () => {
     // Verify with different sentA — should fail
     const valid = serverChannel.verifyCommit(1n, 1n, PRICE * 2n, 0n, clientSig, 0n, PRICE);
     expect(valid).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildPaymentError
+// ---------------------------------------------------------------------------
+
+describe("buildPaymentError", () => {
+  it("encodes a valid error response", () => {
+    const header = buildPaymentError("insufficient_payment", "paid too little");
+    const parsed = parsePaymentResponse(header);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.success).toBe(false);
+    if (!parsed || parsed.success) return;
+    expect(parsed.error).toBe("insufficient_payment");
+    expect(parsed.errorMessage).toBe("paid too little");
+    expect(parsed.network).toBe("ton:-239");
+  });
+
+  it("custom network", () => {
+    const header = buildPaymentError("stale_seqno", "msg", "ton:testnet");
+    const parsed = parsePaymentResponse(header);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.success).toBe(false);
+    if (!parsed || parsed.success) return;
+    expect(parsed.network).toBe("ton:testnet");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// closeRequest round-trip
+// ---------------------------------------------------------------------------
+
+describe("closeRequest protocol", () => {
+  it("should round-trip closeRequest through PAYMENT-RESPONSE", () => {
+    const header = buildPaymentResponse({
+      counterSignature: Buffer.alloc(64, 0xaa),
+      closeRequest: {
+        sentA: PRICE * 5n,
+        sentB: 0n,
+        serverSignature: Buffer.alloc(64, 0xef),
+      },
+    });
+
+    const parsed = parsePaymentResponse(header);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.success).toBe(true);
+    if (!parsed || !parsed.success) return;
+    expect(parsed.closeRequest).toBeDefined();
+    expect(parsed.closeRequest?.sentA).toBe((PRICE * 5n).toString());
+    expect(parsed.closeRequest?.sentB).toBe("0");
+    expect(parsed.closeRequest?.serverSignature).toBeTruthy();
+  });
+
+  it("should round-trip closeSignature through PAYMENT-SIGNATURE", () => {
+    const closeSig = Buffer.alloc(64, 0xfe);
+
+    const header = buildPaymentSignature({
+      channelAddress: CHANNEL_ADDRESS,
+      channelId: CHANNEL_ID.toString(),
+      state: INITIAL_STATE,
+      signature: Buffer.alloc(64, 0xbb),
+      publicKey: clientKeyPair.publicKey,
+      closeSignature: closeSig,
+    });
+
+    const parsed = parsePaymentSignature(header);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.payload.closeSignature).toBeTruthy();
+    const decoded = Buffer.from(parsed!.payload.closeSignature!, "base64");
+    expect(decoded).toEqual(closeSig);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// verifyPaymentSignature — v0.2 checks
+// ---------------------------------------------------------------------------
+
+describe("verifyPaymentSignature v0.2", () => {
+  function buildValidHeader(state: ChannelState, pubKey?: Buffer): string {
+    const sig = clientChannel.signState(state);
+    return buildPaymentSignature({
+      channelAddress: CHANNEL_ADDRESS,
+      channelId: CHANNEL_ID.toString(),
+      state,
+      signature: sig,
+      publicKey: pubKey ?? Buffer.from(clientKeyPair.publicKey),
+    });
+  }
+
+  it("publicKey mismatch -> invalid_payload", () => {
+    const wrongKeyPair = makeKeyPair(0x99);
+    const state = clientChannel.createPaymentState(INITIAL_STATE, PRICE);
+    // Build with wrong publicKey (but valid signature from clientChannel)
+    const sig = clientChannel.signState(state);
+    const header = buildPaymentSignature({
+      channelAddress: CHANNEL_ADDRESS,
+      channelId: CHANNEL_ID.toString(),
+      state,
+      signature: sig,
+      publicKey: Buffer.from(wrongKeyPair.publicKey), // wrong key
+    });
+
+    const result = verifyPaymentSignature(
+      header,
+      serverChannel,
+      null,
+      PRICE,
+      CHANNEL_ADDRESS,
+      CHANNEL_ID.toString(),
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("invalid_payload");
+    expect(result.errorMessage).toContain("counterparty");
+  });
+
+  it("seqnoB changed by client -> stale_seqno", () => {
+    const lastState: ChannelState = {
+      balanceA: INIT_BALANCE_A - PRICE,
+      balanceB: PRICE,
+      seqnoA: 1,
+      seqnoB: 0,
+    };
+    // Client bumps seqnoB (not allowed)
+    const badState: ChannelState = {
+      balanceA: INIT_BALANCE_A - PRICE * 2n,
+      balanceB: PRICE * 2n,
+      seqnoA: 2,
+      seqnoB: 1, // changed!
+    };
+    const sig = clientChannel.signState(badState);
+    const header = buildPaymentSignature({
+      channelAddress: CHANNEL_ADDRESS,
+      channelId: CHANNEL_ID.toString(),
+      state: badState,
+      signature: sig,
+      publicKey: Buffer.from(clientKeyPair.publicKey),
+    });
+
+    const result = verifyPaymentSignature(
+      header,
+      serverChannel,
+      lastState,
+      PRICE,
+      CHANNEL_ADDRESS,
+      CHANNEL_ID.toString(),
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.error).toBe("stale_seqno");
+    expect(result.errorMessage).toContain("seqnoB");
+  });
+
+  it("commitSignature passthrough on valid payment", () => {
+    const state = clientChannel.createPaymentState(INITIAL_STATE, PRICE);
+    const sig = clientChannel.signState(state);
+    const commitSig = Buffer.alloc(64, 0xcc);
+
+    const header = buildPaymentSignature({
+      channelAddress: CHANNEL_ADDRESS,
+      channelId: CHANNEL_ID.toString(),
+      state,
+      signature: sig,
+      publicKey: Buffer.from(clientKeyPair.publicKey),
+      commitSignature: commitSig,
+    });
+
+    const result = verifyPaymentSignature(
+      header,
+      serverChannel,
+      null,
+      PRICE,
+      CHANNEL_ADDRESS,
+      CHANNEL_ID.toString(),
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.commitSignature).toBeTruthy();
+    expect(Buffer.from(result.commitSignature!, "base64")).toEqual(commitSig);
+  });
+
+  it("closeSignature passthrough on valid payment", () => {
+    const state = clientChannel.createPaymentState(INITIAL_STATE, PRICE);
+    const sig = clientChannel.signState(state);
+    const closeSig = Buffer.alloc(64, 0xde);
+
+    const header = buildPaymentSignature({
+      channelAddress: CHANNEL_ADDRESS,
+      channelId: CHANNEL_ID.toString(),
+      state,
+      signature: sig,
+      publicKey: Buffer.from(clientKeyPair.publicKey),
+      closeSignature: closeSig,
+    });
+
+    const result = verifyPaymentSignature(
+      header,
+      serverChannel,
+      null,
+      PRICE,
+      CHANNEL_ADDRESS,
+      CHANNEL_ID.toString(),
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.closeSignature).toBeTruthy();
+    expect(Buffer.from(result.closeSignature!, "base64")).toEqual(closeSig);
+  });
+
+  it("channelExhausted flag when balanceA reaches 0", () => {
+    // Pay the entire balance in one shot
+    const exhaustState: ChannelState = {
+      balanceA: 0n,
+      balanceB: INIT_BALANCE_A,
+      seqnoA: 1,
+      seqnoB: 0,
+    };
+    const sig = clientChannel.signState(exhaustState);
+    const header = buildPaymentSignature({
+      channelAddress: CHANNEL_ADDRESS,
+      channelId: CHANNEL_ID.toString(),
+      state: exhaustState,
+      signature: sig,
+      publicKey: Buffer.from(clientKeyPair.publicKey),
+    });
+
+    const result = verifyPaymentSignature(
+      header,
+      serverChannel,
+      null,
+      PRICE, // price is small, but full balance was paid — still valid
+      CHANNEL_ADDRESS,
+      CHANNEL_ID.toString(),
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.channelExhausted).toBe(true);
+  });
+
+  it("channelExhausted not set when balance > 0", () => {
+    const state = clientChannel.createPaymentState(INITIAL_STATE, PRICE);
+    const header = buildValidHeader(state);
+
+    const result = verifyPaymentSignature(
+      header,
+      serverChannel,
+      null,
+      PRICE,
+      CHANNEL_ADDRESS,
+      CHANNEL_ID.toString(),
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.channelExhausted).toBeUndefined();
   });
 });

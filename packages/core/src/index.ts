@@ -5,7 +5,12 @@ export {
   balanceToSentCoins,
   buildSemiChannelBody,
   buildSemiChannelBodyWithHeader,
+  TAG_CHALLENGE_QUARANTINE,
   TAG_CLOSE,
+  TAG_COMMIT,
+  TAG_INIT,
+  TAG_SETTLE_CONDITIONALS,
+  TAG_START_UNCOOPERATIVE_CLOSE,
   TAG_STATE,
 } from "./cell.js";
 // Payment channel
@@ -22,6 +27,7 @@ export {
 export type { VerifyPaymentResult } from "./protocol.js";
 // Protocol helpers (HTTP 402 header encoding/decoding, building/parsing, verification)
 export {
+  buildPaymentError,
   buildPaymentRequired,
   buildPaymentResponse,
   buildPaymentSignature,
@@ -32,6 +38,13 @@ export {
   parsePaymentSignature,
   verifyPaymentSignature,
 } from "./protocol.js";
+// High-level helpers
+export {
+  channelConfigFromRequirements,
+  resolveChannelFromPayload,
+  sentToBalance,
+  stateFromCloseRequest,
+} from "./helpers.js";
 // State manager
 export { StateManager } from "./state.js";
 export { FileStorage } from "./storage/file.js";
@@ -41,11 +54,13 @@ export { MemoryStorage } from "./storage/memory.js";
 export type {
   ChannelConfig,
   ChannelState,
+  PC402CloseRequest,
   PC402CommitRequest,
   PC402PaymentPayload,
   PC402PaymentRequirements,
   PC402PaymentResponse,
   PC402PaymentSignature,
+  PC402ServerPayment,
   StateStorage,
   VerifyErrorCode,
 } from "./types.js";

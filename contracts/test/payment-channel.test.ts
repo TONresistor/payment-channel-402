@@ -195,10 +195,12 @@ describe('payment-channel v2', () => {
         expect(getExitCode(r.transactions, channelAddress)).toBe(0);
     }
 
-    function buildCooperativeCloseBody(finalSentA: bigint, finalSentB: bigint) {
+    function buildCooperativeCloseBody(finalSentA: bigint, finalSentB: bigint, seqnoA: bigint = 0n, seqnoB: bigint = 0n) {
         const payload = beginCell()
             .storeUint(TAG_COOPERATIVE_CLOSE, 32)
             .storeUint(channelId, 128)
+            .storeUint(seqnoA, 64)
+            .storeUint(seqnoB, 64)
             .storeCoins(finalSentA)
             .storeCoins(finalSentB)
             .endCell();
@@ -213,6 +215,8 @@ describe('payment-channel v2', () => {
             .storeRef(beginCell().storeBuffer(Buffer.from(sigB), 64).endCell())
             .storeUint(TAG_COOPERATIVE_CLOSE, 32)
             .storeUint(channelId, 128)
+            .storeUint(seqnoA, 64)
+            .storeUint(seqnoB, 64)
             .storeCoins(finalSentA)
             .storeCoins(finalSentB)
             .endCell();
@@ -652,6 +656,97 @@ describe('payment-channel v2', () => {
                     .endCell(),
             });
             expect(getExitCode(r.transactions, channelAddress)).toBe(111); // ERROR_TOPUP_ADDRESS_MISMATCH
+        });
+    });
+
+    // ============================================================
+    // 10. Security fixes regression tests (F1-F6)
+    // ============================================================
+    describe('Security fixes', () => {
+        // F1: cooperativeCommit replay — same seqno must be rejected (strict >)
+        it('F1: should reject cooperativeCommit replay (same seqno)', async () => {
+            await deployTopUpAndInit(toNano('2'));
+            // First commit: seqno 1,1 — accepted
+            const body1 = buildCooperativeCommitBody(1n, 1n, 0n, 0n, 0n, 0n);
+            const r1 = await deployer.send({ to: channelAddress, value: toNano('0.01'), body: body1 });
+            expect(getExitCode(r1.transactions, channelAddress)).toBe(0);
+
+            // Replay same commit: seqno 1,1 again — must be rejected (> strict, not >=)
+            const r2 = await deployer.send({ to: channelAddress, value: toNano('0.01'), body: body1 });
+            expect(getExitCode(r2.transactions, channelAddress)).toBe(123); // ERROR_COMMIT_SEQNO_A_REGRESS
+        });
+
+        // F1: absolute withdrawal — withdrawA must not regress
+        it('F1: should reject withdrawal regress (absolute accounting)', async () => {
+            await deployTopUpAndInit(toNano('2'));
+            // Commit with withdrawA = 0.5 TON (absolute)
+            const body1 = buildCooperativeCommitBody(1n, 1n, toNano('0.5'), 0n, toNano('0.5'), 0n);
+            const r1 = await deployer.send({ to: channelAddress, value: toNano('0.01'), body: body1 });
+            expect(getExitCode(r1.transactions, channelAddress)).toBe(0);
+
+            // Commit with withdrawA = 0.3 TON (lower than current 0.5) — must be rejected
+            const body2 = buildCooperativeCommitBody(2n, 2n, toNano('0.5'), 0n, toNano('0.3'), 0n);
+            const r2 = await deployer.send({ to: channelAddress, value: toNano('0.01'), body: body2 });
+            expect(getExitCode(r2.transactions, channelAddress)).toBe(128); // ERROR_COMMIT_WITHDRAW_A_REGRESS
+        });
+
+        // F2: cooperativeClose — old close signature must be rejected after commit
+        it('F2: should reject old cooperativeClose after commit advances seqno', async () => {
+            await deployTopUpAndInit(toNano('2'));
+            // Sign close at seqno 0,0
+            const oldClose = buildCooperativeCloseBody(0n, 0n, 0n, 0n);
+
+            // Advance state via commit to seqno 1,1
+            const commitBody = buildCooperativeCommitBody(1n, 1n, 0n, 0n, 0n, 0n);
+            const rc = await deployer.send({ to: channelAddress, value: toNano('0.01'), body: commitBody });
+            expect(getExitCode(rc.transactions, channelAddress)).toBe(0);
+
+            // Replay old close with seqno 0,0 — must be rejected (seqno < committed)
+            const r = await deployer.send({ to: channelAddress, value: toNano('0.01'), body: oldClose });
+            expect(getExitCode(r.transactions, channelAddress)).toBe(136); // ERROR_CLOSE_SEQNO_A_REGRESS
+        });
+
+        // F3: semichannel cross-validation — mismatched state must be rejected
+        it('F3: should reject uncooperative close with inconsistent semichannels', async () => {
+            await deployTopUpAndInit(toNano('1'));
+            // sentA = 2 TON but depositA = 1 TON — calcA would go negative
+            const body = buildStartUncooperativeClose(true, 1n, toNano('2'), 1n, 0n);
+            const r = await deployer.send({ to: channelAddress, value: toNano('0.01'), body });
+            expect(getExitCode(r.transactions, channelAddress)).toBe(148); // ERROR_UNCOOP_BALANCE_A_NEGATIVE
+        });
+
+        // F5: challenge must not regress either seqno
+        it('F5: should reject challenge that regresses a seqno', async () => {
+            await deployTopUpAndInit(toNano('1'), toNano('1'));
+            // Start uncoop close with seqno 5,5
+            const startBody = buildStartUncooperativeClose(true, 5n, 0n, 5n, 0n);
+            await deployer.send({ to: channelAddress, value: toNano('0.01'), body: startBody });
+
+            // Challenge by B with seqnoA=4 (regress), seqnoB=6 (advance)
+            // The OR check passes (6 > 5) but per-field check should reject (4 < 5)
+            const challengeBody = buildChallengeBody(false, 4n, 0n, 6n, 0n);
+            const r = await deployer.send({ to: channelAddress, value: toNano('0.01'), body: challengeBody });
+            expect(getExitCode(r.transactions, channelAddress)).toBe(156); // ERROR_CHALLENGE_SEQNO_NOT_SUPERSEDE
+        });
+
+        // F6: topUp must be rejected during active dispute
+        it('F6: should reject topUp during quarantine', async () => {
+            await deployTopUpAndInit(toNano('1'), toNano('1'));
+            // Start dispute
+            const startBody = buildStartUncooperativeClose(true, 1n, 0n, 1n, 0n);
+            await deployer.send({ to: channelAddress, value: toNano('0.01'), body: startBody });
+
+            // Try to topUp during quarantine — must be rejected
+            const r = await walletA.send({
+                to: channelAddress,
+                value: toNano('1'),
+                body: beginCell()
+                    .storeUint(OP_TOP_UP, 32)
+                    .storeBit(true)
+                    .storeCoins(toNano('0.5'))
+                    .endCell(),
+            });
+            expect(getExitCode(r.transactions, channelAddress)).toBe(113); // ERROR_TOPUP_QUARANTINE_ACTIVE
         });
     });
 });

@@ -1,7 +1,7 @@
 {
-  "name": "pc402-core",
+  "name": "pc402-fetch",
   "version": "0.2.0",
-  "description": "Core cryptographic primitives for pc402 payment channels",
+  "description": "HTTP client with automatic 402 payment channel handling",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -29,12 +29,15 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@ton/core": ">=0.59.0",
+    "pc402-core": "*",
+    "pc402-channel": "*",
+    "@ton/ton": ">=15.0.0"
+  },
+  "peerDependencies": {
+    "@ton/core": ">=0.60.0",
     "@ton/crypto": ">=3.3.0"
   },
   "devDependencies": {
-    "@types/express": "^5.0.1",
-    "express": "^5.0.1",
     "tsup": "^8.4.0",
     "typescript": "^5.8.3",
     "vitest": "^3.1.1"

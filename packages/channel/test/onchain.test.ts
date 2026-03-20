@@ -43,11 +43,12 @@ const CHANNEL_ID = 123456789n;
 function makeChannel(): OnchainChannel {
   return new OnchainChannel({
     client: {} as any, // not used in message construction tests
-    keyPairA,
-    keyPairB,
+    myKeyPair: keyPairA,
+    counterpartyPublicKey: keyPairB.publicKey,
+    isA: true,
     channelId: CHANNEL_ID,
-    addressA,
-    addressB,
+    myAddress: addressA,
+    counterpartyAddress: addressB,
     initBalanceA: 1_000_000_000n,
     initBalanceB: 0n,
   });
@@ -605,6 +606,42 @@ describe("storage layout (v2 Balance ref)", () => {
     // ^PaymentConfig ref: storageFee(Coins) + addrA + addrB
     const paymentConfig = slice.loadRef().beginParse();
     expect(paymentConfig.loadCoins()).toBe(10_000_000n); // storageFee default (0.01 TON)
+  });
+});
+
+// ===========================================================================
+// isA symmetry — both sides must compute the same channel address
+// ===========================================================================
+
+describe("isA symmetry", () => {
+  it("isA=true and isA=false with mirrored params should produce the same channel address", () => {
+    const channelAsA = new OnchainChannel({
+      client: {} as any,
+      myKeyPair: keyPairA,
+      counterpartyPublicKey: keyPairB.publicKey,
+      isA: true,
+      channelId: CHANNEL_ID,
+      myAddress: addressA,
+      counterpartyAddress: addressB,
+      initBalanceA: 1_000_000_000n,
+      initBalanceB: 0n,
+    });
+
+    const channelAsB = new OnchainChannel({
+      client: {} as any,
+      myKeyPair: keyPairB,
+      counterpartyPublicKey: keyPairA.publicKey,
+      isA: false,
+      channelId: CHANNEL_ID,
+      myAddress: addressB,
+      counterpartyAddress: addressA,
+      initBalanceA: 1_000_000_000n,
+      initBalanceB: 0n,
+    });
+
+    expect(channelAsA.getAddress().equals(channelAsB.getAddress())).toBe(true);
+    expect(channelAsA.getIsA()).toBe(true);
+    expect(channelAsB.getIsA()).toBe(false);
   });
 });
 
