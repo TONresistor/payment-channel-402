@@ -16,7 +16,7 @@ import { makeWalletCommand } from "./commands/wallet.js";
 const program = new Command()
   .name("pc402")
   .description("CLI for pc402 payment channels")
-  .version("0.3.0")
+  .version("0.3.1")
   .option("--wallet <path>", "Path to wallet JSON file (or PC402_WALLET)")
   .option("--rpc <url>", "TonCenter RPC endpoint (or PC402_RPC_ENDPOINT)")
   .option("--rpc-key <key>", "RPC API key (or TONCENTER_API_KEY)")

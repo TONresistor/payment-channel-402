@@ -1,6 +1,6 @@
 {
   "name": "pc402-mcp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "MCP server exposing pc402 payment channels as tools for AI agents",
   "type": "module",
   "bin": {
