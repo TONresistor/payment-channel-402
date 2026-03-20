@@ -3,8 +3,6 @@
   "references": [
     { "path": "./packages/core" },
     { "path": "./packages/channel" },
-    { "path": "./packages/fetch" },
-    { "path": "./packages/mcp" },
-    { "path": "./packages/cli" }
+    { "path": "./packages/fetch" }
   ]
 }
