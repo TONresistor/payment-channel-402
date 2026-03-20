@@ -1,11 +1,6 @@
-import { describe, expect, it } from "vitest";
 import { keyPairFromSeed } from "@ton/crypto";
-import {
-  encodeHeader,
-  decodeHeader,
-  buildPaymentRequired,
-  buildPaymentResponse,
-} from "pc402-core";
+import { buildPaymentRequired, buildPaymentResponse, decodeHeader, encodeHeader } from "pc402-core";
+import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------
 // detectType — same logic as the CLI command (src/commands/protocol.ts)
@@ -50,24 +45,18 @@ describe("protocol encode/decode", () => {
 
 describe("detectType", () => {
   it("identifies PAYMENT-REQUIRED (has scheme, no success)", () => {
-    expect(
-      detectType({ scheme: "pc402", network: "ton:-239", amount: "100" }),
-    ).toBe("PAYMENT-REQUIRED");
+    expect(detectType({ scheme: "pc402", network: "ton:-239", amount: "100" })).toBe(
+      "PAYMENT-REQUIRED",
+    );
   });
 
   it("identifies PAYMENT-SIGNATURE (has x402Version + scheme)", () => {
-    expect(
-      detectType({ x402Version: 2, scheme: "pc402", payload: {} }),
-    ).toBe("PAYMENT-SIGNATURE");
+    expect(detectType({ x402Version: 2, scheme: "pc402", payload: {} })).toBe("PAYMENT-SIGNATURE");
   });
 
   it("identifies PAYMENT-RESPONSE (has success boolean)", () => {
-    expect(detectType({ success: true, counterSignature: "abc" })).toBe(
-      "PAYMENT-RESPONSE",
-    );
-    expect(detectType({ success: false, error: "insufficient_payment" })).toBe(
-      "PAYMENT-RESPONSE",
-    );
+    expect(detectType({ success: true, counterSignature: "abc" })).toBe("PAYMENT-RESPONSE");
+    expect(detectType({ success: false, error: "insufficient_payment" })).toBe("PAYMENT-RESPONSE");
   });
 
   it("returns unknown for unrecognized shape", () => {

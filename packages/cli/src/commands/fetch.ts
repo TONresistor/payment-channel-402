@@ -3,9 +3,9 @@
  */
 
 import { Command } from "commander";
-import { createPC402Fetch } from "pc402-fetch";
 import { parsePaymentResponse } from "pc402-core";
-import { resolveConfig, type CliOpts } from "../config.js";
+import { createPC402Fetch } from "pc402-fetch";
+import { type CliOpts, resolveConfig } from "../config.js";
 
 export function makeFetchCommand(): Command {
   const cmd = new Command("fetch")
@@ -19,7 +19,13 @@ export function makeFetchCommand(): Command {
     .action(
       async (
         url: string,
-        cmdOpts: { method: string; data?: string; header?: string[]; verbose?: boolean; json?: boolean },
+        cmdOpts: {
+          method: string;
+          data?: string;
+          header?: string[];
+          verbose?: boolean;
+          json?: boolean;
+        },
       ) => {
         const config = await resolveConfig(cmd.optsWithGlobals() as CliOpts);
 
@@ -66,7 +72,7 @@ export function makeFetchCommand(): Command {
               paid,
             };
             if (paid) {
-              out["headers"] = { "payment-response": paymentResponseHeader };
+              out.headers = { "payment-response": paymentResponseHeader };
             }
             console.log(JSON.stringify(out));
           } else {
@@ -76,7 +82,9 @@ export function makeFetchCommand(): Command {
           process.exit(res.ok ? 0 : 1);
         } catch (err) {
           if (cmdOpts.json) {
-            console.log(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+            console.log(
+              JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+            );
           } else {
             console.error("Error:", err instanceof Error ? err.message : err);
           }

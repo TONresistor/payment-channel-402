@@ -8,14 +8,14 @@
  *   pc402-mcp --wallet .wallet.json --rpc https://toncenter.com/api/v2/jsonRPC
  */
 
-import { parseArgs } from "node:util";
 import { readFile } from "node:fs/promises";
+import { parseArgs } from "node:util";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { mnemonicToPrivateKey } from "@ton/crypto";
 import { TonClient } from "@ton/ton";
 import { FileStorage } from "pc402-core";
-import { createPC402Fetch, ChannelPool } from "pc402-fetch";
+import { ChannelPool, createPC402Fetch } from "pc402-fetch";
 import { registerTools } from "./tools.js";
 
 // ---------------------------------------------------------------------------

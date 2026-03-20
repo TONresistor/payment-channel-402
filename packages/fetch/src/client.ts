@@ -11,14 +11,14 @@ import {
   buildPaymentSignature,
   type ChannelState,
   MemoryStorage,
-  parsePaymentRequired,
-  parsePaymentResponse,
   PC402Error,
   PC402ErrorCode,
+  parsePaymentRequired,
+  parsePaymentResponse,
   type StateStorage,
 } from "pc402-core";
 
-import { ChannelPool, type ChannelEntry } from "./channel-pool.js";
+import { type ChannelEntry, ChannelPool } from "./channel-pool.js";
 
 /** Options for creating a pc402-aware fetch function. */
 export interface PC402FetchOptions {
@@ -123,7 +123,10 @@ export function createPC402Fetch(options: PC402FetchOptions): PC402Fetch {
         }
 
         if (paymentResponse.semiChannelSignature) {
-          await pool.saveSemiChannelSignature(channel.address, paymentResponse.semiChannelSignature);
+          await pool.saveSemiChannelSignature(
+            channel.address,
+            paymentResponse.semiChannelSignature,
+          );
         }
 
         if (paymentResponse.commitRequest) {

@@ -18,7 +18,7 @@ function formatJsonOutput(opts: {
     paid: opts.paid,
   };
   if (opts.paid && opts.paymentResponseHeader) {
-    out["headers"] = { "payment-response": opts.paymentResponseHeader };
+    out.headers = { "payment-response": opts.paymentResponseHeader };
   }
   return out;
 }

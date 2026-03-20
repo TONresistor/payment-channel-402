@@ -8,7 +8,7 @@
 
 import { Address, beginCell, toNano } from "@ton/core";
 import { type KeyPair, sign } from "@ton/crypto";
-import { TonClient, WalletContractV4 } from "@ton/ton";
+import { type TonClient, WalletContractV4 } from "@ton/ton";
 
 // Opcodes and tags from pc402-channel (duplicated to avoid hard dep on constructor)
 const OP_TOP_UP = 0x593e3893;

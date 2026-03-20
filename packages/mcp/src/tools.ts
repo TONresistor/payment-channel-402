@@ -16,23 +16,23 @@
  *   pc402_pending_commit     — Show pending commit
  */
 
-import { z } from "zod";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Address, beginCell } from "@ton/core";
 import type { KeyPair } from "@ton/crypto";
 import type { TonClient } from "@ton/ton";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { PC402Fetch, ChannelPool } from "pc402-fetch";
+import { buildSignedSemiChannel, OnchainChannel } from "pc402-channel";
 import type { StateStorage } from "pc402-core";
+import { balanceToSentCoins, buildSemiChannelBodyWithHeader, TAG_STATE } from "pc402-core";
+import type { ChannelPool, PC402Fetch } from "pc402-fetch";
 import {
-  topUpChannel,
-  initChannel,
+  createSender,
   getOnchainState,
   getWalletAddress,
   getWalletBalance,
-  createSender,
+  initChannel,
+  topUpChannel,
 } from "pc402-fetch";
-import { balanceToSentCoins, buildSemiChannelBodyWithHeader, TAG_STATE } from "pc402-core";
-import { OnchainChannel, buildSignedSemiChannel } from "pc402-channel";
+import { z } from "zod";
 
 export interface ToolDeps {
   fetch402: PC402Fetch;
@@ -102,9 +102,21 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         const res = await fetch402(url, init);
         const text = await res.text();
         const paid = res.headers.has("payment-response");
-        return { content: [{ type: "text" as const, text: JSON.stringify({ status: res.status, body: text, paid }) }] };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ status: res.status, body: text, paid }),
+            },
+          ],
+        };
       } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` }], isError: true };
+        return {
+          content: [
+            { type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` },
+          ],
+          isError: true,
+        };
       }
     },
   );
@@ -134,7 +146,12 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         }
         return { content: [{ type: "text" as const, text: JSON.stringify({ channels }) }] };
       } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` }], isError: true };
+        return {
+          content: [
+            { type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` },
+          ],
+          isError: true,
+        };
       }
     },
   );
@@ -154,21 +171,28 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         const state = await getOnchainState(client, channelAddress);
         const stateNames = ["uninited", "open", "quarantine"];
         return {
-          content: [{
-            type: "text" as const,
-            text: JSON.stringify({
-              ...state,
-              stateName: stateNames[state.state] ?? "unknown",
-              balanceA: state.balanceA.toString(),
-              balanceB: state.balanceB.toString(),
-              channelId: state.channelId.toString(),
-              withdrawnA: state.withdrawnA.toString(),
-              withdrawnB: state.withdrawnB.toString(),
-            }),
-          }],
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                ...state,
+                stateName: stateNames[state.state] ?? "unknown",
+                balanceA: state.balanceA.toString(),
+                balanceB: state.balanceB.toString(),
+                channelId: state.channelId.toString(),
+                withdrawnA: state.withdrawnA.toString(),
+                withdrawnB: state.withdrawnB.toString(),
+              }),
+            },
+          ],
         };
       } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` }], isError: true };
+        return {
+          content: [
+            { type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` },
+          ],
+          isError: true,
+        };
       }
     },
   );
@@ -187,9 +211,21 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       try {
         if (!client) throw new Error("RPC endpoint not configured (--rpc)");
         await topUpChannel(client, keyPair, channelAddress, BigInt(amount));
-        return { content: [{ type: "text" as const, text: JSON.stringify({ success: true, channelAddress, amount }) }] };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ success: true, channelAddress, amount }),
+            },
+          ],
+        };
       } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` }], isError: true };
+        return {
+          content: [
+            { type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` },
+          ],
+          isError: true,
+        };
       }
     },
   );
@@ -209,10 +245,26 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     async ({ channelAddress, channelId, balanceA, balanceB }) => {
       try {
         if (!client) throw new Error("RPC endpoint not configured (--rpc)");
-        await initChannel(client, keyPair, channelAddress, BigInt(channelId), BigInt(balanceA), BigInt(balanceB));
-        return { content: [{ type: "text" as const, text: JSON.stringify({ success: true, channelAddress }) }] };
+        await initChannel(
+          client,
+          keyPair,
+          channelAddress,
+          BigInt(channelId),
+          BigInt(balanceA),
+          BigInt(balanceB),
+        );
+        return {
+          content: [
+            { type: "text" as const, text: JSON.stringify({ success: true, channelAddress }) },
+          ],
+        };
       } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` }], isError: true };
+        return {
+          content: [
+            { type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` },
+          ],
+          isError: true,
+        };
       }
     },
   );
@@ -220,24 +272,24 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   // -------------------------------------------------------------------------
   // pc402_wallet
   // -------------------------------------------------------------------------
-  server.tool(
-    "pc402_wallet",
-    "Show wallet address and TON balance.",
-    {},
-    async () => {
-      try {
-        const address = getWalletAddress(keyPair).toString();
-        let balance = "unknown";
-        if (client) {
-          const bal = await getWalletBalance(client, keyPair);
-          balance = bal.toString();
-        }
-        return { content: [{ type: "text" as const, text: JSON.stringify({ address, balance }) }] };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` }], isError: true };
+  server.tool("pc402_wallet", "Show wallet address and TON balance.", {}, async () => {
+    try {
+      const address = getWalletAddress(keyPair).toString();
+      let balance = "unknown";
+      if (client) {
+        const bal = await getWalletBalance(client, keyPair);
+        balance = bal.toString();
       }
-    },
-  );
+      return { content: [{ type: "text" as const, text: JSON.stringify({ address, balance }) }] };
+    } catch (err) {
+      return {
+        content: [
+          { type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` },
+        ],
+        isError: true,
+      };
+    }
+  });
 
   // -------------------------------------------------------------------------
   // pc402_close
@@ -253,7 +305,12 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         await pool.closeChannel(channelAddress);
         return { content: [{ type: "text" as const, text: JSON.stringify({ success: true }) }] };
       } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` }], isError: true };
+        return {
+          content: [
+            { type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` },
+          ],
+          isError: true,
+        };
       }
     },
   );
@@ -288,9 +345,21 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           initBalanceB: BigInt(balanceB ?? "0"),
         });
         await oc.deployAndTopUp(sender, true, BigInt(amount));
-        return { content: [{ type: "text" as const, text: JSON.stringify({ success: true, channelAddress: oc.getAddress().toString() }) }] };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ success: true, channelAddress: oc.getAddress().toString() }),
+            },
+          ],
+        };
       } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` }], isError: true };
+        return {
+          content: [
+            { type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` },
+          ],
+          isError: true,
+        };
       }
     },
   );
@@ -322,16 +391,35 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         const sentB = balanceToSentCoins(initB, state.balanceB);
 
         const sigA = oc.signClose(
-          BigInt(state.seqnoA), BigInt(state.seqnoB), sentA, sentB, keyPair,
+          BigInt(state.seqnoA),
+          BigInt(state.seqnoB),
+          sentA,
+          sentB,
+          keyPair,
         );
         const sigB = Buffer.from(serverSignature, "hex");
 
         await oc.cooperativeClose(
-          sender, BigInt(state.seqnoA), BigInt(state.seqnoB), sentA, sentB, sigA, sigB,
+          sender,
+          BigInt(state.seqnoA),
+          BigInt(state.seqnoB),
+          sentA,
+          sentB,
+          sigA,
+          sigB,
         );
-        return { content: [{ type: "text" as const, text: JSON.stringify({ success: true, channelAddress }) }] };
+        return {
+          content: [
+            { type: "text" as const, text: JSON.stringify({ success: true, channelAddress }) },
+          ],
+        };
       } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` }], isError: true };
+        return {
+          content: [
+            { type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` },
+          ],
+          isError: true,
+        };
       }
     },
   );
@@ -365,17 +453,39 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         const wB = BigInt(withdrawB ?? "0");
 
         const sigA = oc.signCommit(
-          BigInt(state.seqnoA), BigInt(state.seqnoB), sentA, sentB, keyPair, wA, wB,
+          BigInt(state.seqnoA),
+          BigInt(state.seqnoB),
+          sentA,
+          sentB,
+          keyPair,
+          wA,
+          wB,
         );
         const sigB = Buffer.from(serverSignature, "hex");
 
         await oc.cooperativeCommit(
-          sender, BigInt(state.seqnoA), BigInt(state.seqnoB),
-          sentA, sentB, sigA, sigB, wA, wB,
+          sender,
+          BigInt(state.seqnoA),
+          BigInt(state.seqnoB),
+          sentA,
+          sentB,
+          sigA,
+          sigB,
+          wA,
+          wB,
         );
-        return { content: [{ type: "text" as const, text: JSON.stringify({ success: true, channelAddress }) }] };
+        return {
+          content: [
+            { type: "text" as const, text: JSON.stringify({ success: true, channelAddress }) },
+          ],
+        };
       } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` }], isError: true };
+        return {
+          content: [
+            { type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` },
+          ],
+          isError: true,
+        };
       }
     },
   );
@@ -409,13 +519,11 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         const sentA = balanceToSentCoins(BigInt(cc.initBalanceA), state.balanceA);
         const sentB = balanceToSentCoins(BigInt(cc.initBalanceB), state.balanceB);
 
-        const schA = buildSignedSemiChannel(
-          channelId, BigInt(state.seqnoA), sentA, keyPair,
-        );
+        const schA = buildSignedSemiChannel(channelId, BigInt(state.seqnoA), sentA, keyPair);
 
         // Use stored server semi-channel signature if available
         const semiSigRaw = await storage.get("pool:semisig:" + channelAddress);
-        let schB;
+        let schB: import("@ton/core").Cell;
         if (semiSigRaw) {
           const sig = Buffer.from(semiSigRaw, "base64");
           const body = buildSemiChannelBodyWithHeader(channelId, state.seqnoB, sentB, TAG_STATE);
@@ -425,25 +533,35 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
             publicKey: Buffer.from(cc.serverPublicKey, "hex"),
             secretKey: Buffer.alloc(64),
           };
-          schB = buildSignedSemiChannel(
-            channelId, BigInt(state.seqnoB), sentB, serverKeyPair,
-          );
+          schB = buildSignedSemiChannel(channelId, BigInt(state.seqnoB), sentB, serverKeyPair);
         }
 
         const outerSig = oc.signStartUncoopClose(schA, schB, keyPair);
         await oc.startUncooperativeClose(sender, true, outerSig, schA, schB);
         return {
-          content: [{
-            type: "text" as const,
-            text: JSON.stringify({
-              success: true,
-              channelAddress,
-              ...(semiSigRaw ? {} : { warning: "Uncooperative close requires server counter-signatures. This may fail on-chain if they are not stored." }),
-            }),
-          }],
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                success: true,
+                channelAddress,
+                ...(semiSigRaw
+                  ? {}
+                  : {
+                      warning:
+                        "Uncooperative close requires server counter-signatures. This may fail on-chain if they are not stored.",
+                    }),
+              }),
+            },
+          ],
         };
       } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` }], isError: true };
+        return {
+          content: [
+            { type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` },
+          ],
+          isError: true,
+        };
       }
     },
   );
@@ -477,13 +595,11 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         const sentA = balanceToSentCoins(BigInt(cc.initBalanceA), state.balanceA);
         const sentB = balanceToSentCoins(BigInt(cc.initBalanceB), state.balanceB);
 
-        const schA = buildSignedSemiChannel(
-          channelId, BigInt(state.seqnoA), sentA, keyPair,
-        );
+        const schA = buildSignedSemiChannel(channelId, BigInt(state.seqnoA), sentA, keyPair);
 
         // Use stored server semi-channel signature if available
         const semiSigRaw = await storage.get("pool:semisig:" + channelAddress);
-        let schB;
+        let schB: import("@ton/core").Cell;
         if (semiSigRaw) {
           const sig = Buffer.from(semiSigRaw, "base64");
           const body = buildSemiChannelBodyWithHeader(channelId, state.seqnoB, sentB, TAG_STATE);
@@ -493,25 +609,35 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
             publicKey: Buffer.from(cc.serverPublicKey, "hex"),
             secretKey: Buffer.alloc(64),
           };
-          schB = buildSignedSemiChannel(
-            channelId, BigInt(state.seqnoB), sentB, serverKeyPair,
-          );
+          schB = buildSignedSemiChannel(channelId, BigInt(state.seqnoB), sentB, serverKeyPair);
         }
 
         const outerSig = oc.signChallenge(schA, schB, keyPair);
         await oc.challengeQuarantinedState(sender, true, outerSig, schA, schB);
         return {
-          content: [{
-            type: "text" as const,
-            text: JSON.stringify({
-              success: true,
-              channelAddress,
-              ...(semiSigRaw ? {} : { warning: "Challenge requires server counter-signatures. This may fail on-chain if they are not stored." }),
-            }),
-          }],
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                success: true,
+                channelAddress,
+                ...(semiSigRaw
+                  ? {}
+                  : {
+                      warning:
+                        "Challenge requires server counter-signatures. This may fail on-chain if they are not stored.",
+                    }),
+              }),
+            },
+          ],
         };
       } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` }], isError: true };
+        return {
+          content: [
+            { type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` },
+          ],
+          isError: true,
+        };
       }
     },
   );
@@ -531,9 +657,18 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         const oc = await loadOnchainChannel(client, keyPair, storage, channelAddress);
         const { sender } = createSender(client, keyPair);
         await oc.finishUncooperativeClose(sender);
-        return { content: [{ type: "text" as const, text: JSON.stringify({ success: true, channelAddress }) }] };
+        return {
+          content: [
+            { type: "text" as const, text: JSON.stringify({ success: true, channelAddress }) },
+          ],
+        };
       } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` }], isError: true };
+        return {
+          content: [
+            { type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` },
+          ],
+          isError: true,
+        };
       }
     },
   );
@@ -553,9 +688,18 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         if (!raw) {
           return { content: [{ type: "text" as const, text: JSON.stringify({ pending: false }) }] };
         }
-        return { content: [{ type: "text" as const, text: JSON.stringify({ pending: true, signature: raw }) }] };
+        return {
+          content: [
+            { type: "text" as const, text: JSON.stringify({ pending: true, signature: raw }) },
+          ],
+        };
       } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` }], isError: true };
+        return {
+          content: [
+            { type: "text" as const, text: `Error: ${err instanceof Error ? err.message : err}` },
+          ],
+          isError: true,
+        };
       }
     },
   );

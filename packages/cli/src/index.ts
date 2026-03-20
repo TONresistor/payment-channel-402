@@ -8,10 +8,10 @@
  */
 
 import { Command } from "commander";
-import { makeFetchCommand } from "./commands/fetch.js";
 import { makeChannelCommand } from "./commands/channel.js";
-import { makeWalletCommand } from "./commands/wallet.js";
+import { makeFetchCommand } from "./commands/fetch.js";
 import { makeProtocolCommand } from "./commands/protocol.js";
+import { makeWalletCommand } from "./commands/wallet.js";
 
 const program = new Command()
   .name("pc402")

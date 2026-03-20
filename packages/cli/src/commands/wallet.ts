@@ -2,10 +2,10 @@
  * pc402 wallet balance|address — Wallet info
  */
 
-import { Command } from "commander";
 import { TonClient } from "@ton/ton";
+import { Command } from "commander";
 import { getWalletAddress, getWalletBalance } from "pc402-fetch";
-import { resolveConfig, type CliOpts } from "../config.js";
+import { type CliOpts, resolveConfig } from "../config.js";
 
 export function makeWalletCommand(): Command {
   const cmd = new Command("wallet").description("Wallet information");

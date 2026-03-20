@@ -1,17 +1,17 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { keyPairFromSeed } from "@ton/crypto";
 import type { KeyPair } from "@ton/crypto";
+import { keyPairFromSeed } from "@ton/crypto";
 import {
   buildPaymentRequired,
   buildPaymentResponse,
   type ChannelState,
   MemoryStorage,
+  PaymentChannel,
   parsePaymentRequired,
   parsePaymentSignature,
-  PaymentChannel,
 } from "pc402-core";
-import { createPC402Fetch } from "../src/client.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChannelPool } from "../src/channel-pool.js";
+import { createPC402Fetch } from "../src/client.js";
 
 // ---------------------------------------------------------------------------
 // Test helpers

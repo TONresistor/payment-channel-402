@@ -3,12 +3,13 @@
  */
 
 import { Command } from "commander";
-import { encodeHeader, decodeHeader } from "pc402-core";
-import { readFileSync } from "fs";
+import { readFileSync } from "node:fs";
+import { decodeHeader, encodeHeader } from "pc402-core";
 
 function detectType(obj: Record<string, unknown>): string {
   if (typeof obj.success === "boolean") return "PAYMENT-RESPONSE";
-  if (typeof obj.x402Version === "number" && typeof obj.scheme === "string") return "PAYMENT-SIGNATURE";
+  if (typeof obj.x402Version === "number" && typeof obj.scheme === "string")
+    return "PAYMENT-SIGNATURE";
   if (typeof obj.scheme === "string") return "PAYMENT-REQUIRED";
   return "unknown";
 }

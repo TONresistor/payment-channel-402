@@ -24,6 +24,13 @@ export {
   SignatureError,
   ValidationError,
 } from "./errors.js";
+// High-level helpers
+export {
+  channelConfigFromRequirements,
+  resolveChannelFromPayload,
+  sentToBalance,
+  stateFromCloseRequest,
+} from "./helpers.js";
 export type { VerifyPaymentResult } from "./protocol.js";
 // Protocol helpers (HTTP 402 header encoding/decoding, building/parsing, verification)
 export {
@@ -38,13 +45,6 @@ export {
   parsePaymentSignature,
   verifyPaymentSignature,
 } from "./protocol.js";
-// High-level helpers
-export {
-  channelConfigFromRequirements,
-  resolveChannelFromPayload,
-  sentToBalance,
-  stateFromCloseRequest,
-} from "./helpers.js";
 // State manager
 export { StateManager } from "./state.js";
 export { FileStorage } from "./storage/file.js";

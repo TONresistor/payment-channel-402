@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { balanceToSentCoins } from "pc402-core";
+import { describe, expect, it } from "vitest";
 
 describe("balanceToSentCoins", () => {
   it("A pays B: initA=1TON, balA=0.9TON -> sentA=0.1TON", () => {
