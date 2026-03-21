@@ -22,25 +22,6 @@ Peer dependencies: `@ton/core`, `@ton/crypto`, `@ton/ton`.
 
 ## Quick Start
 
-### For AI agents (MCP)
-
-```bash
-npm install -g pc402-mcp
-pc402-mcp --wallet .wallet.json --rpc https://toncenter.com/api/v2/jsonRPC
-```
-
-Configure in Claude Desktop or Cursor — see [packages/mcp/README.md](packages/mcp/README.md).
-
-### For AI agents (CLI)
-
-```bash
-npm install -g pc402-cli
-pc402 fetch https://api.example.com/data --wallet .wallet.json
-pc402 channel list --wallet .wallet.json
-```
-
-See [packages/cli/README.md](packages/cli/README.md) for all 16 commands.
-
 ### For developers (library)
 
 ```bash
@@ -54,6 +35,64 @@ const fetch402 = createPC402Fetch({ keyPair, storage });
 const res = await fetch402("https://api.example.com/data");
 // 402 Payment Required? Handled automatically.
 ```
+
+### For AI agents (CLI)
+
+```bash
+npm install -g pc402-cli
+pc402 fetch https://api.example.com/data --wallet .wallet.json
+pc402 channel list --wallet .wallet.json
+```
+
+See [packages/cli/README.md](packages/cli/README.md) for all 16 commands.
+
+## MCP Server
+
+pc402-mcp exposes 14 tools to AI agents via the [Model Context Protocol](https://modelcontextprotocol.io).
+
+```bash
+npm install -g pc402-mcp
+```
+
+### Claude Code
+
+```bash
+claude mcp add pc402 -- pc402-mcp --wallet /path/to/.wallet.json --rpc https://toncenter.com/api/v2/jsonRPC
+```
+
+### Cursor / Windsurf / VS Code
+
+Add to `.cursor/mcp.json`, `~/.codeium/windsurf/mcp_config.json`, or `.vscode/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "pc402": {
+      "command": "pc402-mcp",
+      "args": ["--wallet", "/path/to/.wallet.json", "--rpc", "https://toncenter.com/api/v2/jsonRPC"]
+    }
+  }
+}
+```
+
+### Tools
+
+| Tool | Description |
+|------|-------------|
+| `pc402_fetch` | Fetch a URL with automatic 402 payment |
+| `pc402_balance` | Show off-chain channel balances |
+| `pc402_wallet` | Show wallet address and balance |
+| `pc402_status` | Read on-chain channel state |
+| `pc402_deploy` | Deploy a new channel |
+| `pc402_init` | Initialize a channel (UNINITED -> OPEN) |
+| `pc402_topup` | Top up a channel with TON |
+| `pc402_cooperative_close` | Settle and close a channel |
+| `pc402_cooperative_commit` | Partial withdrawal without closing |
+| `pc402_start_uncoop_close` | Start dispute (server offline) |
+| `pc402_challenge` | Challenge a stale quarantined state |
+| `pc402_finish_uncoop_close` | Finalize after quarantine |
+| `pc402_pending_commit` | Check pending commit signature |
+| `pc402_close` | Remove channel from local storage |
 
 ## Flow
 

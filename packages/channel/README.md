@@ -1,6 +1,6 @@
 # pc402-channel
 
-On-chain payment channel lifecycle for TON. Deploy, fund, initialize, commit, close, and handle disputes via the pc402 v2.1 smart contract.
+On-chain TON payment channel lifecycle management for pc402.
 
 ## Install
 
@@ -8,107 +8,301 @@ On-chain payment channel lifecycle for TON. Deploy, fund, initialize, commit, cl
 npm install pc402-channel
 ```
 
-Peer dependencies: `@ton/core`, `@ton/crypto`. Also requires `@ton/ton` (TonClient).
+Peer dependencies: `@ton/core >=0.60.0`, `@ton/crypto >=3.3.0`
 
-## Usage
+## Quick example
 
-```typescript
-import { OnchainChannel, buildSignedSemiChannel } from "pc402-channel";
+```ts
+import { OnchainChannel } from "pc402-channel";
+import { TonClient } from "@ton/ton";
+import { toNano } from "@ton/core";
 
-// Constructor (v0.2): myKeyPair/counterpartyPublicKey/isA/myAddress/counterpartyAddress
+const client = new TonClient({ endpoint: "https://toncenter.com/api/v2/jsonRPC" });
+
 const channel = new OnchainChannel({
-  client,                              // TonClient instance
-  myKeyPair: keyPairA,                 // this party's Ed25519 key pair
+  client,
+  myKeyPair: keyPairA,
   counterpartyPublicKey: keyPairB.publicKey,
-  isA: true,                           // true if this party is side A
-  myAddress: addressA,
-  counterpartyAddress: addressB,
-  channelId: 1n,                       // unique uint128
-  initBalanceA: 0n, initBalanceB: 0n,
-  closingConfig: {                     // optional
-    quarantineDuration: 3600,          // seconds (default: 0)
-    conditionalCloseDuration: 3600,
-    misbehaviorFine: 0n,
-  },
+  isA: true,
+  channelId: 1n,
+  myAddress: addrA,
+  counterpartyAddress: addrB,
+  initBalanceA: toNano("1"),
+  initBalanceB: toNano("1"),
 });
 
-// Deploy + fund + init
+// Party A: deploy and fund in one tx
 await channel.deployAndTopUp(senderA, true, toNano("1"));
-await channel.init(senderA, toNano("1"), 0n); // uses this.myKeyPair + this.isA
 
-// Read state
-const state = await channel.getOnchainState();
-// { state: 1, balanceA, balanceB, seqnoA, seqnoB, withdrawnA, withdrawnB, channelId }
+// Party B: fund their side
+await channel.topUp(senderB, false, toNano("1"));
 
-// Cooperative close (v0.2): seqnoA/seqnoB added
-const sigA = channel.signClose(seqnoA, seqnoB, sentA, sentB, keyPairA);
-const sigB = channel.signClose(seqnoA, seqnoB, sentA, sentB, keyPairB);
-await channel.cooperativeClose(senderA, seqnoA, seqnoB, sentA, sentB, sigA, sigB);
+// Either party inits (transitions UNINITED -> OPEN)
+await channel.init(senderA, toNano("1"), toNano("1"));
+
+console.log(channel.getAddress().toString());
 ```
 
-## API
+## OnchainChannel API
 
-### OnchainChannel
+### Constructor
 
-| Method | Description |
-|---|---|
-| **Lifecycle** | |
-| `deployAndTopUp(via, isA, amount)` | Deploy contract + first deposit |
-| `topUp(via, isA, amount)` | Add funds (before or after init) |
-| `init(via, balanceA, balanceB)` | Initialize channel (UNINITED → OPEN); uses `this.myKeyPair` + `this.isA` |
-| **Cooperative** | |
-| `signClose(seqnoA, seqnoB, sentA, sentB, keyPair)` | Sign cooperative close payload |
-| `cooperativeClose(via, seqnoA, seqnoB, sentA, sentB, sigA, sigB)` | Close and distribute funds |
-| `signCommit(seqnoA, seqnoB, sentA, sentB, kp, wA?, wB?)` | Sign commit payload |
-| `cooperativeCommit(via, seqnoA, seqnoB, sentA, sentB, sigA, sigB, wA?, wB?)` | Advance seqnos + optional withdrawal |
-| **Dispute** | |
-| `signStartUncoopClose(schA, schB, keyPair)` | Sign dispute initiation |
-| `startUncooperativeClose(via, signedByA, sig, schA, schB)` | Begin quarantine |
-| `signChallenge(schA, schB, keyPair)` | Sign challenge payload |
-| `challengeQuarantinedState(via, byA, sig, schA, schB)` | Submit newer state during quarantine |
-| `signSettle(conditionalsCell, keyPair)` | Sign conditional settlement |
-| `settleConditionals(via, isFromA, sig, cell)` | Execute Merkle proof conditionals |
-| `finishUncooperativeClose(via)` | Finalize after timeout (callable by anyone) |
-| **Query** | |
-| `getOnchainState()` | Read channel state from blockchain |
-| `getAddress()` | Get contract address |
-| `getChannelId()` | Get channel ID |
+```ts
+new OnchainChannel(options: OnchainChannelOptions)
+```
 
-### Helpers
+Computes the deterministic contract address from the stateInit. Throws `ValidationError` if `channelId <= 0` or a public key is not 32 bytes.
 
-| Export | Description |
-|---|---|
-| `buildSignedSemiChannel(chId, seqno, sent, kp)` | Build signed semi-channel cell for dispute |
-| `createChannelStateInit(config)` | Build StateInit for contract deployment |
-| `PAYMENT_CHANNEL_CODE` | Compiled v2.1 contract bytecode (Cell), includes 6 security fixes over v2 |
+**OnchainChannelOptions**
 
-### Constants
-
-All opcodes (`OP_TOP_UP`, `OP_INIT_CHANNEL`, ...) are exported for advanced use. Signature tags are re-exported from `pc402-core` (single source of truth).
-
-## Channel States
-
-| State | Value | Description |
+| Field | Type | Description |
 |---|---|---|
-| UNINITED | 0 | Not initialized (or closed and reopenable) |
-| OPEN | 1 | Active, payments can flow |
-| CLOSURE_STARTED | 2 | Quarantine period (dispute initiated) |
-| SETTLING_CONDITIONALS | 3 | Conditional payment settlement window |
-| AWAITING_FINALIZATION | 4 | Ready for `finishUncooperativeClose` |
+| `client` | `TonClient` | TonClient instance for sending messages and calling get-methods |
+| `myKeyPair` | `KeyPair` | Ed25519 key pair of this party |
+| `counterpartyPublicKey` | `Buffer` | Ed25519 public key of the counterparty (32 bytes) |
+| `isA` | `boolean` | `true` if this party is A, `false` if B |
+| `channelId` | `bigint` | Unique channel identifier (uint128, must be positive) |
+| `myAddress` | `Address` | TON address of this party |
+| `counterpartyAddress` | `Address` | TON address of the counterparty |
+| `initBalanceA` | `bigint` | A's initial deposit in nanotons |
+| `initBalanceB` | `bigint` | B's initial deposit in nanotons |
+| `closingConfig?` | `object` | Optional closing parameters (see below) |
 
-## Gas Costs
+**closingConfig** (all optional, defaults to 0)
 
-| Operation | Cost |
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `quarantineDuration` | `number` | `0` | Quarantine window in seconds |
+| `misbehaviorFine` | `bigint` | `0n` | Fine deducted from the misbehaving party in nanotons |
+| `conditionalCloseDuration` | `number` | `0` | Duration for conditional resolution in seconds |
+
+### Getters
+
+```ts
+getAddress(): Address
+```
+Returns the deterministic contract address derived from the stateInit.
+
+```ts
+getChannelId(): bigint
+```
+Returns the uint128 channel identifier.
+
+```ts
+getIsA(): boolean
+```
+Returns `true` if this instance represents party A.
+
+### Deploy
+
+```ts
+async deployAndTopUp(via: Sender, isA: boolean, amount: bigint): Promise<void>
+```
+Deploys the contract and funds it in a single transaction. Sends `amount + GAS_DEPLOY` (0.02 TON). The other party calls `topUp()` separately. Throws `ValidationError` if `amount <= 0`.
+
+```ts
+async topUp(via: Sender, isA: boolean, amount: bigint): Promise<void>
+```
+Tops up an already-deployed channel. The contract validates that the sender matches `addrA` (if `isA=true`) or `addrB` (if `isA=false`). Throws `ValidationError` if `amount <= 0`.
+
+### Init
+
+```ts
+signInit(balanceA: bigint, balanceB: bigint, keyPair: KeyPair): Buffer
+```
+Signs `tag_init(32) + channelId(128) + balanceA(Coins) + balanceB(Coins)`. Returns a 64-byte Ed25519 signature.
+
+```ts
+async init(via: Sender, balanceA: bigint, balanceB: bigint): Promise<void>
+```
+Transitions the channel from UNINITED to OPEN. Signs with `myKeyPair`. Only one party's signature is required by the contract.
+
+### Cooperative close
+
+```ts
+signClose(
+  seqnoA: bigint,
+  seqnoB: bigint,
+  sentA: bigint,
+  sentB: bigint,
+  keyPair: KeyPair,
+): Buffer
+```
+Signs `tag_close(32) + channelId(128) + seqnoA(64) + seqnoB(64) + sentA(Coins) + sentB(Coins)`. Returns a 64-byte Ed25519 signature. Throws `ValidationError` if `sentA < 0` or `sentB < 0`.
+
+```ts
+async cooperativeClose(
+  via: Sender,
+  seqnoA: bigint,
+  seqnoB: bigint,
+  sentA: bigint,
+  sentB: bigint,
+  signatureA: Buffer,
+  signatureB: Buffer,
+): Promise<void>
+```
+Closes the channel with both signatures. The contract verifies both, distributes funds, and destroys itself.
+
+### Cooperative commit
+
+```ts
+signCommit(
+  seqnoA: bigint,
+  seqnoB: bigint,
+  sentA: bigint,
+  sentB: bigint,
+  keyPair: KeyPair,
+  withdrawA?: bigint,  // default 0n
+  withdrawB?: bigint,  // default 0n
+): Buffer
+```
+Signs the commit payload. Returns a 64-byte Ed25519 signature.
+
+```ts
+async cooperativeCommit(
+  via: Sender,
+  seqnoA: bigint,
+  seqnoB: bigint,
+  sentA: bigint,
+  sentB: bigint,
+  signatureA: Buffer,
+  signatureB: Buffer,
+  withdrawA?: bigint,  // default 0n
+  withdrawB?: bigint,  // default 0n
+): Promise<void>
+```
+Advances committed seqnos on-chain without closing. Allows both parties to safely discard older states. Can trigger partial withdrawals when `withdrawA` or `withdrawB` is non-zero.
+
+### Uncooperative close
+
+```ts
+signStartUncoopClose(schA: Cell, schB: Cell, keyPair: KeyPair): Buffer
+```
+Signs `tag(32) + channelId(128) + schA(ref) + schB(ref)`. Returns a 64-byte Ed25519 signature.
+
+```ts
+async startUncooperativeClose(
+  via: Sender,
+  signedByA: boolean,
+  signatureMsg: Buffer,
+  schA: Cell,
+  schB: Cell,
+): Promise<void>
+```
+Submits the latest known state on-chain and begins the quarantine period. The counterparty may challenge with a newer state during this window.
+
+```ts
+signChallenge(schA: Cell, schB: Cell, keyPair: KeyPair): Buffer
+```
+Signs `tag(32) + channelId(128) + schA(ref) + schB(ref)` for a challenge. Returns a 64-byte Ed25519 signature.
+
+```ts
+async challengeQuarantinedState(
+  via: Sender,
+  challengedByA: boolean,
+  signatureMsg: Buffer,
+  schA: Cell,
+  schB: Cell,
+): Promise<void>
+```
+Challenges a quarantined state with a newer one. Must be called during the quarantine period. If the challenger's seqnos are strictly higher, the contract replaces the quarantined state and optionally penalizes the misbehaving party.
+
+```ts
+signSettle(conditionalsCell: Cell, keyPair: KeyPair): Buffer
+```
+Signs `tag(32) + channelId(128) + conditionalsCell(ref)`. Returns a 64-byte Ed25519 signature.
+
+```ts
+async settleConditionals(
+  via: Sender,
+  isFromA: boolean,
+  signature: Buffer,
+  conditionalsCell: Cell,
+): Promise<void>
+```
+Resolves pending conditional payments during the conditional close period after uncooperative close.
+
+```ts
+async finishUncooperativeClose(via: Sender): Promise<void>
+```
+Finalizes uncooperative close after quarantine and conditional close periods have both expired. Can be sent by anyone. Distributes remaining funds and destroys the contract.
+
+### State
+
+```ts
+async getOnchainState(): Promise<{
+  state: number;       // 0=uninited, 1=open, 2=quarantine
+  balanceA: bigint;    // A's current available balance in nanotons
+  balanceB: bigint;    // B's current available balance in nanotons
+  channelId: bigint;   // uint128 channel identifier
+  seqnoA: number;      // A's last committed sequence number
+  seqnoB: number;      // B's last committed sequence number
+  withdrawnA: bigint;  // total already withdrawn by A in nanotons
+  withdrawnB: bigint;  // total already withdrawn by B in nanotons
+}>
+```
+Calls `get_channel_data` on the contract and parses the result.
+
+## Exported functions
+
+```ts
+function buildSignedSemiChannel(
+  channelId: bigint,
+  seqno: bigint,
+  sentCoins: bigint,
+  keyPair: KeyPair,
+): Cell
+```
+Builds a `SignedSemiChannel` cell (v2 layout) for use with `startUncooperativeClose` and `challengeQuarantinedState`. The cell contains a 512-bit Ed25519 signature and a ref to the body cell (`tag_state + channelId + seqno + sentCoins + conditionalsHash`).
+
+```ts
+function createChannelStateInit(config: ChannelInitConfig): StateInit
+```
+Builds the `StateInit` (code + data cell) for a new channel contract. Used internally by `OnchainChannel` to derive the deterministic contract address.
+
+**ChannelInitConfig**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `publicKeyA` | `Buffer` | required | A's Ed25519 public key (32 bytes) |
+| `publicKeyB` | `Buffer` | required | B's Ed25519 public key (32 bytes) |
+| `channelId` | `bigint` | required | Unique channel identifier (uint128) |
+| `addressA` | `Address` | required | A's TON address |
+| `addressB` | `Address` | required | B's TON address |
+| `quarantineDuration` | `number` | `259200` (3 days) | Quarantine window in seconds |
+| `misbehaviorFine` | `bigint` | `0n` | Fine in nanotons |
+| `conditionalCloseDuration` | `number` | `86400` (1 day) | Conditional close window in seconds |
+| `storageFee` | `bigint` | `10000000n` (0.01 TON) | Storage fee reserved in nanotons |
+
+## Exported constants
+
+### OP codes
+
+| Constant | Value |
 |---|---|
-| deployAndTopUp | ~0.005 TON |
-| init | ~0.004 TON |
-| cooperativeCommit | ~0.005 TON |
-| cooperativeClose | ~0.006 TON |
-| startUncooperativeClose | ~0.005 TON |
-| finishUncooperativeClose | ~0.005 TON |
+| `OP_TOP_UP` | `0x593e3893` |
+| `OP_INIT_CHANNEL` | `0x79ae99b5` |
+| `OP_COOPERATIVE_CLOSE` | `0xd2b1eeeb` |
+| `OP_COOPERATIVE_COMMIT` | `0x076bfdf1` |
+| `OP_START_UNCOOPERATIVE_CLOSE` | `0x8175e15d` |
+| `OP_CHALLENGE_QUARANTINE` | `0x9a77c0db` |
+| `OP_SETTLE_CONDITIONALS` | `0x56c39b4c` |
+| `OP_FINISH_UNCOOPERATIVE_CLOSE` | `0x25432a91` |
 
-Surplus gas is refunded automatically via the contract's excess pattern.
+### TAG constants
 
-## License
+| Constant | Description |
+|---|---|
+| `TAG_STATE` | Domain tag for semi-channel state signing |
+| `TAG_INIT` | Domain tag for channel init signing |
+| `TAG_COOPERATIVE_CLOSE` | Domain tag for cooperative close signing |
+| `TAG_COOPERATIVE_COMMIT` | Domain tag for cooperative commit signing |
+| `TAG_START_UNCOOPERATIVE_CLOSE` | Domain tag for start uncoop close signing |
+| `TAG_CHALLENGE_QUARANTINE` | Domain tag for challenge signing |
+| `TAG_SETTLE_CONDITIONALS` | Domain tag for settle conditionals signing |
 
-MIT
+### Contract bytecode
+
+```ts
+PAYMENT_CHANNEL_CODE: Cell  // compiled pc402 Tolk contract v2
+```
