@@ -20,65 +20,6 @@ Open a channel on-chain, exchange unlimited signed payments off-chain, close on-
 
 Peer dependencies: `@ton/core`, `@ton/crypto`, `@ton/ton`.
 
-## Quick Start
-
-### For developers (library)
-
-```bash
-npm install pc402-fetch
-```
-
-```typescript
-import { createPC402Fetch } from "pc402-fetch";
-
-const fetch402 = createPC402Fetch({ keyPair, storage });
-const res = await fetch402("https://api.example.com/data");
-// 402 Payment Required? Handled automatically.
-```
-
-### For AI agents (CLI)
-
-```bash
-npm install -g pc402-cli
-pc402 fetch https://api.example.com/data --wallet .wallet.json
-pc402 channel list --wallet .wallet.json
-```
-
-See [packages/cli/README.md](packages/cli/README.md) for all 16 commands.
-
-## MCP Server
-
-pc402-mcp exposes 14 tools to AI agents via the [Model Context Protocol](https://modelcontextprotocol.io).
-
-```bash
-npm install -g pc402-mcp
-```
-
-```bash
-claude mcp add pc402 -- pc402-mcp --wallet /path/to/.wallet.json --rpc https://toncenter.com/api/v2/jsonRPC
-```
-
-See [packages/mcp/README.md](packages/mcp/README.md) for Cursor, Windsurf, and VS Code configuration.
-
-### Tools
-
-| Tool | Description |
-|------|-------------|
-| `pc402_fetch` | Fetch a URL with automatic 402 payment |
-| `pc402_balance` | Show off-chain channel balances |
-| `pc402_wallet` | Show wallet address and balance |
-| `pc402_status` | Read on-chain channel state |
-| `pc402_deploy` | Deploy a new channel |
-| `pc402_init` | Initialize a channel (UNINITED -> OPEN) |
-| `pc402_topup` | Top up a channel with TON |
-| `pc402_cooperative_close` | Settle and close a channel |
-| `pc402_cooperative_commit` | Partial withdrawal without closing |
-| `pc402_start_uncoop_close` | Start dispute (server offline) |
-| `pc402_challenge` | Challenge a stale quarantined state |
-| `pc402_finish_uncoop_close` | Finalize after quarantine |
-| `pc402_pending_commit` | Check pending commit signature |
-| `pc402_close` | Remove channel from local storage |
-
 ## Flow
 
 ### 1. Discovery (HTTP 402)
@@ -183,18 +124,6 @@ await channel.startUncooperativeClose(senderA, true, sig, schA, schB);
 await channel.finishUncooperativeClose(senderA);
 ```
 
-## Structure
-
-| Path | Package | Description |
-|------|---------|-------------|
-| `packages/core/` | `pc402-core` | Off-chain signing, HTTP 402, state management |
-| `packages/channel/` | `pc402-channel` | On-chain lifecycle, dispute resolution |
-| `packages/fetch/` | `pc402-fetch` | HTTP client with auto-402 payment |
-| `packages/cli/` | `pc402-cli` | CLI for agents and developers (16 commands) |
-| `packages/mcp/` | `pc402-mcp` | MCP server for AI agents (14 tools) |
-| `contracts/` | | Payment channel smart contract (Tolk v2.1, 6 files, 36 sandbox tests) |
-| `test/e2e/` | | 3 E2E mainnet test suites |
-
 ## Smart Contract
 
 Bidirectional payment channel on TON. Two parties lock funds on-chain, exchange unlimited off-chain payments via signed state updates, then settle in one transaction. Supports cooperative close, uncooperative close with quarantine, partial withdrawals, and channel reopen. Source in `contracts/src/`, bytecode embedded in `pc402-channel`. See [contracts/README.md](contracts/README.md) for details.
@@ -230,6 +159,81 @@ Each party has 3 tracked values on-chain: `deposit`, `withdrawn`, `sent`.
 | challengeQuarantinedState | 0.005 TON |
 | finishUncooperativeClose | 0.005 TON |
 | **Off-chain payment** | **0 TON** |
+
+## Quick Start
+
+A server protects an API behind HTTP 402. A client pays automatically via a payment channel.
+
+**Server** -- charge 0.01 TON per request:
+
+```typescript
+import { buildPaymentRequired, verifyPaymentSignature, buildPaymentResponse } from "pc402-core";
+
+app.use((req, res, next) => {
+  const header = buildPaymentRequired({ price: 10_000_000n, serverPublicKey, serverAddress, channelAddress, channelId, initBalanceA, initBalanceB });
+  const payment = req.headers["payment-signature"];
+  if (!payment) return res.status(402).set("payment-required", header).end();
+
+  const result = verifyPaymentSignature(payment, channel, lastState, 10_000_000n, channelAddress, channelId);
+  if (!result.valid) return res.status(402).set("payment-required", header).end();
+
+  lastState = result.state;
+  res.set("payment-response", buildPaymentResponse({ counterSignature: channel.signState(result.state) }));
+  next();
+});
+```
+
+**Client** -- pays transparently:
+
+```typescript
+import { createPC402Fetch } from "pc402-fetch";
+
+const fetch402 = createPC402Fetch({ keyPair, storage });
+const res = await fetch402("https://api.example.com/data");
+// 402 detected -> signs payment -> retries -> gets response. Zero gas.
+```
+
+## MCP Server
+
+pc402-mcp exposes 14 tools to AI agents via the [Model Context Protocol](https://modelcontextprotocol.io).
+
+```bash
+npm install -g pc402-mcp
+claude mcp add pc402 -- pc402-mcp --wallet /path/to/.wallet.json --rpc https://toncenter.com/api/v2/jsonRPC
+```
+
+See [packages/mcp/README.md](packages/mcp/README.md) for Cursor, Windsurf, and VS Code configuration.
+
+### Tools
+
+| Tool | Description |
+|------|-------------|
+| `pc402_fetch` | Fetch a URL with automatic 402 payment |
+| `pc402_balance` | Show off-chain channel balances |
+| `pc402_wallet` | Show wallet address and balance |
+| `pc402_status` | Read on-chain channel state |
+| `pc402_deploy` | Deploy a new channel |
+| `pc402_init` | Initialize a channel (UNINITED -> OPEN) |
+| `pc402_topup` | Top up a channel with TON |
+| `pc402_cooperative_close` | Settle and close a channel |
+| `pc402_cooperative_commit` | Partial withdrawal without closing |
+| `pc402_start_uncoop_close` | Start dispute (server offline) |
+| `pc402_challenge` | Challenge a stale quarantined state |
+| `pc402_finish_uncoop_close` | Finalize after quarantine |
+| `pc402_pending_commit` | Check pending commit signature |
+| `pc402_close` | Remove channel from local storage |
+
+## Monorepo structure
+
+| Path | Package | Description |
+|------|---------|-------------|
+| `packages/core/` | `pc402-core` | Off-chain signing, HTTP 402, state management |
+| `packages/channel/` | `pc402-channel` | On-chain lifecycle, dispute resolution |
+| `packages/fetch/` | `pc402-fetch` | HTTP client with auto-402 payment |
+| `packages/cli/` | `pc402-cli` | CLI for agents and developers (16 commands) |
+| `packages/mcp/` | `pc402-mcp` | MCP server for AI agents (14 tools) |
+| `contracts/` | | Payment channel smart contract (Tolk v2.1, 6 files, 36 sandbox tests) |
+| `test/e2e/` | | 3 E2E mainnet test suites |
 
 ## Testing
 
