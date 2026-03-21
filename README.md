@@ -54,26 +54,11 @@ pc402-mcp exposes 14 tools to AI agents via the [Model Context Protocol](https:/
 npm install -g pc402-mcp
 ```
 
-### Claude Code
-
 ```bash
 claude mcp add pc402 -- pc402-mcp --wallet /path/to/.wallet.json --rpc https://toncenter.com/api/v2/jsonRPC
 ```
 
-### Cursor / Windsurf / VS Code
-
-Add to `.cursor/mcp.json`, `~/.codeium/windsurf/mcp_config.json`, or `.vscode/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "pc402": {
-      "command": "pc402-mcp",
-      "args": ["--wallet", "/path/to/.wallet.json", "--rpc", "https://toncenter.com/api/v2/jsonRPC"]
-    }
-  }
-}
-```
+See [packages/mcp/README.md](packages/mcp/README.md) for Cursor, Windsurf, and VS Code configuration.
 
 ### Tools
 

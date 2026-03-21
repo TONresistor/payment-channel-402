@@ -10,15 +10,17 @@ Runs over stdio transport (JSON-RPC), following the [Model Context Protocol](htt
 npm install -g pc402-mcp
 ```
 
-## Usage
+## Setup
+
+### Claude Code
 
 ```bash
-pc402-mcp --wallet .wallet.json --rpc https://toncenter.com/api/v2/jsonRPC
+claude mcp add pc402 -- pc402-mcp --wallet /path/to/.wallet.json --rpc https://toncenter.com/api/v2/jsonRPC
 ```
 
-### Claude Desktop
+### Cursor
 
-Add to `claude_desktop_config.json`:
+Add to `.cursor/mcp.json`:
 
 ```json
 {
@@ -31,14 +33,19 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
-### Claude Code
+### Windsurf
 
-Add to `.claude/settings.json`:
+Add to `~/.codeium/windsurf/mcp_config.json` (same format as above).
+
+### VS Code
+
+Add to `.vscode/mcp.json`:
 
 ```json
 {
-  "mcpServers": {
+  "servers": {
     "pc402": {
+      "type": "stdio",
       "command": "pc402-mcp",
       "args": ["--wallet", "/path/to/.wallet.json", "--rpc", "https://toncenter.com/api/v2/jsonRPC"]
     }
@@ -50,13 +57,20 @@ Add to `.claude/settings.json`:
 
 | Tool | Description |
 |------|-------------|
-| `pc402_fetch` | Fetch a URL with automatic HTTP 402 payment |
+| `pc402_fetch` | Fetch a URL with automatic 402 payment |
 | `pc402_balance` | Show off-chain channel balances |
-| `pc402_status` | Read on-chain channel state (requires `--rpc`) |
-| `pc402_topup` | Top up a channel with TON (requires `--rpc`) |
-| `pc402_init` | Initialize a channel: UNINITED -> OPEN (requires `--rpc`) |
 | `pc402_wallet` | Show wallet address and balance |
-| `pc402_close` | Remove a channel from local storage |
+| `pc402_status` | Read on-chain channel state |
+| `pc402_deploy` | Deploy a new channel |
+| `pc402_init` | Initialize a channel (UNINITED -> OPEN) |
+| `pc402_topup` | Top up a channel with TON |
+| `pc402_cooperative_close` | Settle and close a channel |
+| `pc402_cooperative_commit` | Partial withdrawal without closing |
+| `pc402_start_uncoop_close` | Start dispute (server offline) |
+| `pc402_challenge` | Challenge a stale quarantined state |
+| `pc402_finish_uncoop_close` | Finalize after quarantine |
+| `pc402_pending_commit` | Check pending commit signature |
+| `pc402_close` | Remove channel from local storage |
 
 ## Configuration
 
