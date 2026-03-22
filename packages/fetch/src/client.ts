@@ -26,6 +26,8 @@ export interface PC402FetchOptions {
   keyPair: KeyPair;
   /** Pluggable storage for persisting channel state across sessions. */
   storage?: StateStorage;
+  /** Maximum price per request in nanotons. Rejects 402 responses above this amount. */
+  maxPrice?: bigint;
 }
 
 /** The fetch-like function returned by createPC402Fetch. */
@@ -46,7 +48,7 @@ export type PC402Fetch = (input: string | URL | Request, init?: RequestInit) => 
  * Non-402 responses are returned as-is.
  */
 export function createPC402Fetch(options: PC402FetchOptions): PC402Fetch {
-  const { keyPair, storage = new MemoryStorage() } = options;
+  const { keyPair, storage = new MemoryStorage(), maxPrice } = options;
   const pool = new ChannelPool(keyPair, storage);
 
   return async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
@@ -70,18 +72,26 @@ export function createPC402Fetch(options: PC402FetchOptions): PC402Fetch {
       throw new PC402Error("Invalid PAYMENT-REQUIRED header", PC402ErrorCode.INVALID_HEADER);
     }
 
-    // 4. Get or create channel
+    // 4. Reject if price exceeds maxPrice
+    const amount = BigInt(requirements.amount);
+    if (maxPrice !== undefined && amount > maxPrice) {
+      throw new PC402Error(
+        `Server price ${amount} exceeds maxPrice ${maxPrice}`,
+        PC402ErrorCode.INVALID_AMOUNT,
+      );
+    }
+
+    // 5. Get or create channel
     const entry: ChannelEntry = await pool.getOrCreate(requirements);
     const { paymentChannel, state } = entry;
-    const amount = BigInt(requirements.amount);
 
-    // 5. Create new state with payment
+    // 6. Create new state with payment
     const newState: ChannelState = paymentChannel.createPaymentState(state, amount);
 
-    // 6. Sign the new state
+    // 7. Sign the new state
     const signature = paymentChannel.signState(newState);
 
-    // 7. Channel info must be present for payment
+    // 8. Channel info must be present for payment
     if (!requirements.channel) {
       throw new PC402Error(
         "Server 402 did not include channel info (discovery mode not supported by this client)",
@@ -90,10 +100,10 @@ export function createPC402Fetch(options: PC402FetchOptions): PC402Fetch {
     }
     const channel = requirements.channel;
 
-    // 8. Check for pending commit signature from previous response
+    // 9. Check for pending commit signature from previous response
     const pendingCommit = await pool.popPendingCommit(channel.address);
 
-    // 9. Build PAYMENT-SIGNATURE header
+    // 10. Build PAYMENT-SIGNATURE header
     const paymentHeader = buildPaymentSignature({
       channelAddress: channel.address,
       channelId: channel.channelId,
@@ -105,62 +115,60 @@ export function createPC402Fetch(options: PC402FetchOptions): PC402Fetch {
       commitSignature: pendingCommit ?? undefined,
     });
 
-    // 10. Retry with payment header
+    // 11. Retry with payment header
     const retryHeaders = new Headers(init?.headers);
     retryHeaders.set("payment-signature", paymentHeader);
     const retryResponse = await fetch(input, { ...init, headers: retryHeaders });
 
-    // 11. Process PAYMENT-RESPONSE header
+    // 12. Process PAYMENT-RESPONSE header — only save state if server accepted
     const prResponseHeader = retryResponse.headers.get("payment-response");
-    if (prResponseHeader) {
-      const paymentResponse = parsePaymentResponse(prResponseHeader);
+    const paymentResponse = prResponseHeader ? parsePaymentResponse(prResponseHeader) : null;
 
-      if (paymentResponse?.success) {
-        await pool.saveCounterSignature(channel.address, paymentResponse.counterSignature);
+    if (paymentResponse?.success) {
+      await pool.saveCounterSignature(channel.address, paymentResponse.counterSignature);
 
-        if (paymentResponse.closeRequest) {
-          await pool.saveCloseRequest(channel.address, paymentResponse.closeRequest);
-        }
+      if (paymentResponse.closeRequest) {
+        await pool.saveCloseRequest(channel.address, paymentResponse.closeRequest);
+      }
 
-        if (paymentResponse.semiChannelSignature) {
-          await pool.saveSemiChannelSignature(
-            channel.address,
-            paymentResponse.semiChannelSignature,
-          );
-        }
+      if (paymentResponse.semiChannelSignature) {
+        await pool.saveSemiChannelSignature(
+          channel.address,
+          paymentResponse.semiChannelSignature,
+        );
+      }
 
-        if (paymentResponse.commitRequest) {
-          const cr = paymentResponse.commitRequest;
+      if (paymentResponse.commitRequest) {
+        const cr = paymentResponse.commitRequest;
 
-          // Verify server's commit signature and co-sign if valid
-          const serverSig = Buffer.from(cr.serverSignature, "base64");
-          const valid = paymentChannel.verifyCommit(
+        // Verify server's commit signature and co-sign if valid
+        const serverSig = Buffer.from(cr.serverSignature, "base64");
+        const valid = paymentChannel.verifyCommit(
+          BigInt(cr.seqnoA),
+          BigInt(cr.seqnoB),
+          BigInt(cr.sentA),
+          BigInt(cr.sentB),
+          serverSig,
+          BigInt(cr.withdrawA),
+          BigInt(cr.withdrawB),
+        );
+
+        if (valid) {
+          const commitSig = paymentChannel.signCommit(
             BigInt(cr.seqnoA),
             BigInt(cr.seqnoB),
             BigInt(cr.sentA),
             BigInt(cr.sentB),
-            serverSig,
             BigInt(cr.withdrawA),
             BigInt(cr.withdrawB),
           );
-
-          if (valid) {
-            const commitSig = paymentChannel.signCommit(
-              BigInt(cr.seqnoA),
-              BigInt(cr.seqnoB),
-              BigInt(cr.sentA),
-              BigInt(cr.sentB),
-              BigInt(cr.withdrawA),
-              BigInt(cr.withdrawB),
-            );
-            await pool.savePendingCommit(channel.address, commitSig);
-          }
+          await pool.savePendingCommit(channel.address, commitSig);
         }
       }
-    }
 
-    // 12. Save updated state
-    await pool.saveState(channel.address, newState);
+      // 13. Save updated state only on successful payment
+      await pool.saveState(channel.address, newState);
+    }
 
     return retryResponse;
   };

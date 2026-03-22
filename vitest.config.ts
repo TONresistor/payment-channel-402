@@ -6,6 +6,7 @@ export default defineConfig({
       "packages/core",
       "packages/channel",
       "packages/cli",
+      "packages/mcp",
     ],
     passWithNoTests: true,
   },
